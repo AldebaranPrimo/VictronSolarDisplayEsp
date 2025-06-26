@@ -30,7 +30,6 @@ static lv_obj_t *lbl_battV, *lbl_battA, *lbl_loadA;
 static lv_obj_t *lbl_solar, *lbl_yield, *lbl_state, *lbl_error;
 static lv_obj_t *solar_symbol, *bolt_symbol;
 static lv_obj_t *ta_mac, *ta_key, *lbl_load_watt;
-static lv_obj_t *spinner; // Spinner for Live tab
 
 // Global brightness variable
 uint8_t brightness = 100;
@@ -145,12 +144,18 @@ void ui_init(void) {
     lv_obj_set_flex_align(row, LV_FLEX_ALIGN_SPACE_EVENLY,
                            LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     lv_obj_clear_flag(row, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_style_bg_color(row, lv_color_hex(0x223355), 0);
+    lv_obj_set_style_border_width(row, 0, 0);
+    lv_obj_set_style_outline_width(row, 0, 0);
+
 
     #define NEW_BOX(name, txt, ptr) do { \
         lv_obj_t *b = lv_obj_create(row); \
         lv_obj_set_size(b, lv_pct(30), 80); \
         lv_obj_set_style_pad_all(b, 8, 0); \
         lv_obj_set_style_bg_opa(b, LV_OPA_TRANSP, 0); \
+        lv_obj_set_style_border_width(b, 0, 0); \
+        lv_obj_set_style_outline_width(b, 0, 0); \
         lv_obj_t *h = lv_label_create(b); \
         lv_label_set_text(h, name); \
         lv_obj_add_style(h, &style_title, 0); \
@@ -164,11 +169,6 @@ void ui_init(void) {
     NEW_BOX("Batt V", "0.00 V", &lbl_battV);
     NEW_BOX("Batt A", "0.0 A",  &lbl_battA);
     NEW_BOX("Load A", "0.0 A", &lbl_loadA);
-
-    // --- Spinner in center of Live tab ---
-    spinner = lv_spinner_create(tab_live, 1000, 60); // 1s, 60deg/step
-    lv_obj_set_size(spinner, 40, 40);
-    lv_obj_align(spinner, LV_ALIGN_CENTER, 0, 0);
 
     lbl_state = lv_label_create(tab_live);
     lv_obj_add_style(lbl_state, &style_big, 0);
