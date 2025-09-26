@@ -1,0 +1,1416 @@
+2022/12/14 13:27
+
+1/9
+
+Extra manufacturer Data
+
+Extra manufacturer Data
+This page describes the data format of the extra manufacturer data that can be added to the Victron
+Manufacturer Data record type 0x10 - Product Advertisement.
+The block of extra data is called a record and it starts with the following data:
+Start bit Nr of bits Meaning
+8
+Record type
+0
+8
+16
+Nonce/Data counter in LSB order
+24
+8
+Byte 0 of the encryption key
+The record type can be one of the following:
+Value
+0x00
+0x01
+0x02
+0x03
+0x04
+0x05
+0x06
+0x07
+0x08
+0x09
+0x0A
+0x0B
+0x0C
+0x0D
+
+Record type
+Test record
+Solar Charger
+Battery Monitor
+Inverter
+DC/DC converter
+SmartLithium
+Inverter RS
+GX-Device (Record layout TBD)
+AC Charger (Record layout TBD)
+Smart Battery Protect
+(Lynx Smart) BMS
+Multi RS
+VE.Bus
+DC Energy Meter
+Unassigned / Reserved for future extensions
+0x0E..0xFF
+Possibly with a second type byte
+The nonce/data counter in the header is used in the encryption to make the result of the encryption a
+little more random. This way, somebody that does not have the encryption key has to wait almost a
+day (assuming a change every second) for the same nonce value before more information can be
+extracted. What can be extracted in that case is only which bits have changed, but not the ﬁnal value.
+For some things the exact value might be deducible after 1 message. For example, the MPPT state is
+likely to be oﬀ in the middle of the night. This would allow someone to determine the exact value of
+the state when the same nonce is received at a later moment. It however does not give any
+information on the encryption key or other ﬁelds of the record.
+The ﬁrst byte of the encryption key is included in the message. This can be used by the receiving side
+to check if the key that they have matches the key that was used for the encoding. When this byte
+does not match the key as stored on the receiving device, then the stored key should be discarded
+and the device should stop trying to decode the advertisement. The advertising device should change
+the key when the bluetooth pin code is changed. This keeps the knowledge of the correct key in sync
+with phones that are also bonded meaning that a phone that can connect can also decode the
+advertisement messages. The advertising device should limit the chance of re-using a value for the
+Victron Energy - https://wiki.victronenergy.com/
+
+Last update: 2022/12/14 13:25
+
+rend:ble:extra_manufacturer_data https://wiki.victronenergy.com/rend/ble/extra_manufacturer_data
+
+ﬁrst byte, for example by simply incrementing the ﬁrsts byte when generating a new key instead of
+taking a random value. When a key is not stored, a complete random key should be generated.
+The encryption is done using a AES-CTR operation (AES-CTR on wikipedia)
+
+In the case of the extra advertisement data, the nonce is 2 bytes wide and contains the nonce bytes
+of the record header. The counter ﬁeld of the AES-CTR operation is a MSB counter that starts at 0.
+Records that contain 16 bytes of data or less can be encrypted/decrypted using 1 AES operation. At
+the moment, this is true for all records.
+The maximum length of a record is 20 bytes for the nRF devices. This maybe less for a GX-Device
+(TBD!!).
+The layout of a record is never changed, it can however be extended in the future. This means that an
+implementation should not perform an upper bound check on the length. As the length is not ﬁxed
+and items can be added, a length check should be performed for all items when retrieving data from
+the record.
+Unused bits in the last byte of a record should be set. This also means that when a record is
+extended, care should be taken with the NA value, such that when the new ﬁeld does not cross a byte
+boundary, the receiver should be able to use the NA value to determine in the ﬁeld is actually set or
+not.
+
+Test record
+This is used by software test applications
+Start
+bit
+32
+
+Nr of
+bits
+30
+
+62
+
+7
+
+69
+
+91
+
+Meaning
+
+Units Range
+
+Uptime
+
+1s
+
+NA value
+
+Remark
+
+0 .. 34 year 0x3FFFFFFF VE_REG_UPTIME
+VE_REG_BAT_TEMPERATURE
+Temperature 1 °C -40 .. 86 °C 0xFF
+Temperature = Record value 40
+Unused
+
+https://wiki.victronenergy.com/
+
+Printed on 2022/12/14 13:27
+
+2022/12/14 13:27
+
+3/9
+
+Extra manufacturer Data
+
+Solar Charger
+Nr
+Start
+of
+Meaning
+Units Range
+bit
+bits
+32
+8
+Device state
+0 .. 0xFE
+Charger
+40
+8
+0 .. 0xFE
+Error
+Battery
+-327.68 ..
+48
+16
+0.01 V
+voltage
+327.66 V
+64
+
+16
+
+Battery
+current
+
+0.1A
+
+80
+
+16
+
+Yield today
+
+0.01
+kWh
+
+96
+
+16
+
+PV power
+
+1W
+
+112
+121
+
+9
+39
+
+Load current 0.1 A
+Unused
+
+-3276.8 ..
+3276.6 A
+
+NA
+value
+
+Remark
+
+0xFF
+
+VE_REG_DEVICE_STATE
+
+0xFF
+
+VE_REG_CHR_ERROR_CODE
+
+0x7FFF
+
+VE_REG_DC_CHANNEL1_VOLTAGE
+
+0x7FFF
+
+0 .. 655.34
+0xFFFF
+kWh
+0 .. 65534
+0xFFFF
+W
+0 .. 51.0 A 0x1FF
+
+VE_REG_DC_CHANNEL1_CURRENT
+Also negative current because of a possibly
+connected load
+VE_REG_CHR_TODAY_YIELD
+655.34 kWh is 27.3 kW@24h
+VE_REG_DC_INPUT_POWER (un32 @
+0.01W)
+VE_REG_DC_OUTPUT_CURRENT
+
+Battery Monitor
+Nr
+Start
+of Meaning
+bit
+bits
+32
+
+16
+
+48
+
+16
+
+64
+
+16
+
+80
+
+16
+
+Units Range
+
+NA value Remark
+
+0 .. 45.5
+0xFFFF
+days
+Battery
+-327.68 ..
+0.01 V
+0x7FFF
+voltage
+327.66 V
+Alarm reason
+0 .. 0xFFFF -327.68 ..
+327.64 V
+Aux voltage
+0.01 V
+0 .. 655.34
+Mid voltage
+0.01 V
+V
+Temperature 0.01 K
+0 .. 655.34
+K
+TTG
+
+96
+
+2
+
+Aux input
+
+98
+
+22
+
+Battery
+current
+
+120
+
+20
+
+140
+
+10
+
+150
+
+10
+
+1min
+
+0 .. 3
+
+0x3
+
+VE_REG_TTG
+VE_REG_DC_CHANNEL1_VOLTAGE
+VE_REG_ALARM_REASON
+VE_REG_DC_CHANNEL2_VOLTAGE
+VE_REG_BATTERY_MID_POINT_VOLTAGE
+VE_REG_BAT_TEMPERATURE
+VE_REG_BMV_AUX_INPUT
+0 ⇒ Aux voltage :
+VE_REG_DC_CHANNEL2_VOLTAGE
+1 ⇒ Mid voltage :
+VE_REG_BATTERY_MID_POINT_VOLTAGE
+2 ⇒ Temperature :
+VE_REG_BAT_TEMPERATURE
+3 ⇒ none
+
+-4194 ..
+0x3FFFFF VE_REG_DC_CHANNEL1_CURRENT_MA
+4194 A
+-104,857 ..
+VE_REG_CAH
+Consumed Ah 0.1 Ah
+0xFFFFF
+0 Ah
+Consumed Ah = -Record value
+0 ..
+SOC
+0.1%
+0x3FF
+VE_REG_SOC
+100.0%
+Unused
+0.001A
+
+Victron Energy - https://wiki.victronenergy.com/
+
+Last update: 2022/12/14 13:25
+
+rend:ble:extra_manufacturer_data https://wiki.victronenergy.com/rend/ble/extra_manufacturer_data
+
+Inverter
+Start
+bit
+32
+40
+
+Nr of
+Meaning
+bits
+8
+Device state
+16
+Alarm Reason
+
+56
+
+16
+
+72
+
+16
+
+88
+103
+114
+
+15
+11
+46
+
+Units Range
+
+NA value Remark
+
+0 .. 0xFE
+0xFF
+0 .. 0xFFFF
+-327.68 ..
+Battery voltage 0.01 V
+0x7FFF
+327.66 V
+AC Apparent
+1 VA 0 .. 65534 VA 0xFFFF
+power
+AC voltage
+0.01 V 0 .. 327.66 V 0x7FFF
+AC current
+0.1 A 0 .. 204.6 A 0x7FF
+Unused
+
+VE_REG_DEVICE_STATE
+VE_REG_ALARM_REASON
+VE_REG_DC_CHANNEL1_VOLTAGE
+VE_REG_AC_OUT_APPARENT_POWER
+VE_REG_AC_OUT_VOLTAGE
+VE_REG_AC_OUT_CURRENT
+
+DC/DC Converter
+Start
+bit
+32
+40
+48
+
+Nr of
+Meaning
+bits
+8
+Device state
+8
+Charger Error
+16
+Input voltage
+
+64
+
+16
+
+80
+112
+
+32
+48
+
+Units Range
+
+NA value Remark
+
+0 .. 0xFE
+0xFF
+0 .. 0xFE
+0xFF
+0.01 V 0 .. 655.34 V
+0xFFFF
+-327.68 .. 327.66
+Output voltage 0.01 V
+0x7FFF
+V
+Oﬀ reason
+0 .. 0xFFFFFFFF Unused
+
+VE_REG_DEVICE_STATE
+VE_REG_CHR_ERROR_CODE
+VE_REG_DC_INPUT_VOLTAGE
+VE_REG_DC_CHANNEL1_VOLTAGE
+VE_REG_DEVICE_OFF_REASON_2
+
+SmartLithium
+Nr
+Start
+of Meaning
+bit
+bits
+32
+
+32
+
+64
+
+16
+
+80
+87
+94
+101
+108
+115
+122
+129
+136
+148
+
+7
+7
+7
+7
+7
+7
+7
+7
+12
+4
+
+152
+
+7
+
+159
+
+1
+
+BMS ﬂags
+
+Units Range
+0 ..
+0xFFFFFFFF
+
+SmartLithium
+0 .. 0xFFFF
+error
+Cell 1
+0.01V 2.60 .. 3.86 V
+Cell 2
+0.01V 2.60 .. 3.86 V
+Cell 3
+0.01V 2.60 .. 3.86 V
+Cell 4
+0.01V 2.60 .. 3.86 V
+Cell 5
+0.01V 2.60 .. 3.86 V
+Cell 6
+0.01V 2.60 .. 3.86 V
+Cell 7
+0.01V 2.60 .. 3.86 V
+Cell 8
+0.01V 2.60 .. 3.86 V
+Battery voltage 0.01 V 0 .. 40.94 V
+Balancer status
+0 .. 15
+Battery
+1 °C -40 .. 86 °C
+temperature
+Unused
+
+https://wiki.victronenergy.com/
+
+NA
+value
+
+Remark
+VE_REG_BMS_FLAGs
+VE_REG_SMART_LITHIUM_ERROR_FLAGS
+
+0xFF
+0xFF
+0xFF
+0xFF
+0xFF
+0xFF
+0xFF
+0xFF
+0x0FFF
+0x0F
+0x7F
+
+VE_REG_BATTERY_CELL_VOLTAGE*
+VE_REG_BATTERY_CELL_VOLTAGE*
+VE_REG_BATTERY_CELL_VOLTAGE*
+VE_REG_BATTERY_CELL_VOLTAGE*
+VE_REG_BATTERY_CELL_VOLTAGE*
+VE_REG_BATTERY_CELL_VOLTAGE*
+VE_REG_BATTERY_CELL_VOLTAGE*
+VE_REG_BATTERY_CELL_VOLTAGE*
+VE_REG_DC_CHANNEL1_VOLTAGE
+VE_REG_BALANCER_STATUS
+VE_REG_BAT_TEMPERATURE
+Temperature = Record value - 40
+
+Printed on 2022/12/14 13:27
+
+2022/12/14 13:27
+
+5/9
+
+Extra manufacturer Data
+
+* VE_REG_BATTERY_CELL_VOLTAGE
+0x00 ( 0) when cell voltage < 2.61V
+0x01 ( 1) when cell voltage == 2.61V
+0x7D (125) when cell voltage == 3.85V
+0x7E (126) when cell voltage > 3.85
+0x7F (127) when cell voltage is not available / unknown
+
+Inverter RS
+Start
+bit
+32
+40
+
+Nr of
+Meaning
+bits
+8
+Device state
+8
+Charger Error
+
+48
+
+16
+
+Battery voltage 0.01 V
+
+64
+
+16
+
+Battery current 0.1A
+
+80
+
+16
+
+PV power
+
+96
+
+16
+
+Yield today
+
+112
+
+16
+
+AC out power
+
+128
+
+32
+
+Unused
+
+Units
+
+1W
+0.01
+kWh
+1W
+
+Range
+
+NA value Remark
+
+0 .. 0xFE
+0 .. 0xFE
+-327.68 ..
+327.66 V
+-3276.8 ..
+3276.6 A
+0 .. 65,534 W
+0 .. 655.34
+kWh
+-32,768 ..
+32,766 W
+
+0xFF
+0xFF
+
+VE_REG_DEVICE_STATE
+VE_REG_CHR_ERROR_CODE
+
+0x7FFF
+
+VE_REG_DC_CHANNEL1_VOLTAGE
+
+0x7FFF
+
+VE_REG_DC_CHANNEL1_CURRENT
+
+0xFFFF
+
+VE_REG_DC_INPUT_POWER
+VE_REG_CHR_TODAY_YIELD
+655.34 kWh is 27.3 kW@24h
+
+0xFFFF
+0x7FFF
+
+VE_REG_AC_OUT_REAL_POWER
+
+GX-Device
+Record layout is still to be determined and might change.
+Start
+bit
+
+Nr of
+Meaning
+bits
+
+Units Range
+
+32
+
+16
+
+Battery voltage
+
+0.01 V
+
+48
+68
+75
+96
+
+20
+7
+21
+21
+
+W
+1%
+W
+W
+
+117
+
+43
+
+PV power
+SOC
+Battery power
+DC power
+TBD - AC in power
+TBD - AC out power
+TBD - Warnings /
+Alarms
+TBD
+Unused
+
+0 .. 655.34
+V
+0 .. 1 MW
+0 .. 100%
+-1 .. 1 MW
+-1 .. 1 MW
+
+AC Charger
+Record layout is still to be determined and might change.
+Victron Energy - https://wiki.victronenergy.com/
+
+NA value Remark
+0xFFFF
+
+VE_REG_DC_CHANNEL1_VOLTAGE
+
+0xFFFFF VE_REG_DC_INPUT_POWER
+0x7F
+VE_REG_SOC
+0x0FFFFF VE_REG_DC_CHANNEL1_POWER
+0x0FFFFF
+
+Last update: 2022/12/14 13:25
+
+rend:ble:extra_manufacturer_data https://wiki.victronenergy.com/rend/ble/extra_manufacturer_data
+
+Nr
+Start
+of
+Meaning
+bit
+bits
+32
+8
+Device state
+40
+8
+Charger Error
+48
+
+13
+
+61
+
+11
+
+72
+
+13
+
+85
+
+11
+
+96
+
+13
+
+109
+
+11
+
+120
+
+7
+
+127
+136
+
+9
+24
+
+Units Range
+
+NA
+value
+
+Remark
+
+0 .. 0xFE 0xFF
+0 .. 0xFE 0xFF
+0 .. 81.90
+Battery voltage 1 0.01 V
+0x1FFF
+V
+0 .. 204.6
+Battery current 1 0.1A
+0x7FF
+A
+0 .. 81.90
+Battery voltage 2 0.01 V
+0x1FFF
+V
+0 .. 204.6
+Battery current 2 0.1A
+0x7FF
+A
+0 .. 81.90
+Battery voltage 3 0.01 V
+0x1FFF
+V
+0 .. 204.6
+Battery current 3 0.1A
+0x7FF
+A
+-40 .. 86
+Temperature
+°C
+0x7F
+°C
+AC current
+0.1A 0 .. 51.0 A 0x1FF
+Unused
+
+VE_REG_DEVICE_STATE
+VE_REG_CHR_ERROR_CODE
+VE_REG_DC_CHANNEL1_VOLTAGE
+VE_REG_DC_CHANNEL1_CURRENT
+VE_REG_DC_CHANNEL2_VOLTAGE
+VE_REG_DC_CHANNEL2_CURRENT
+VE_REG_DC_CHANNEL3_VOLTAGE
+VE_REG_DC_CHANNEL3_CURRENT
+VE_REG_BAT_TEMPERATURE
+Temperature = Record value - 40
+VE_REG_AC_ACTIVE_INPUT_L1_CURRENT
+
+Smart Battery Protect
+Start
+bit
+8
+16
+24
+32
+48
+64
+80
+96
+128
+
+Nr of
+Meaning
+Units Range
+bits
+8
+Device state
+0 .. 0xFE
+8
+Output state
+0 .. 0xFE
+8
+Error code
+0 .. 0xFE
+16
+Alarm reason
+0 .. 0xFFFF
+16
+Warning reason
+0 .. 0xFFFF
+327.68 .. 327.66
+16
+Input voltage
+0.01 V
+V
+16
+Output voltage 0.01 V 0 .. 655.34 V
+32
+Oﬀ reason
+0 .. 0xFFFFFFFF
+32
+Unused
+
+NA
+value
+0xFF
+0xFF
+0xFF
+-
+
+Remark
+VE_REG_DEVICE_STATE
+VE_REG_DC_OUTPUT_STATUS
+VE_REG_CHR_ERROR_CODE
+VE_REG_ALARM_REASON
+VE_REG_WARNING_REASON
+
+0x7FFF
+
+VE_REG_DC_CHANNEL1_VOLTAGE
+
+0xFFFF
+-
+
+VE_REG_DC_OUTPUT_VOLTAGE
+VE_REG_DEVICE_OFF_REASON_2
+
+(Lynx Smart) BMS
+Nr
+Start
+of
+Meaning
+bit
+bits
+32
+8
+Error
+40
+
+16
+
+56
+
+16
+
+72
+
+16
+
+Units Range
+
+0 .. 45.5
+days
+-327.68 ..
+Battery voltage 0.01 V
+327.66 V
+-3276.8 ..
+Battery current 0.1A
+3276.6
+TTG
+
+https://wiki.victronenergy.com/
+
+1min
+
+NA
+value
+
+Remark
+
+0x0
+
+VE_REG_BMS_ERROR
+
+0xFFFF
+
+VE_REG_TTG
+
+0x7FFF
+
+VE_REG_DC_CHANNEL1_VOLTAGE
+
+0x7FFF
+
+VE_REG_DC_CHANNEL1_CURRENT
+Printed on 2022/12/14 13:27
+
+2022/12/14 13:27
+
+Nr
+Start
+of
+bit
+bits
+88
+16
+104
+18
+122
+10
+
+7/9
+
+Meaning
+
+Units Range
+
+Extra manufacturer Data
+
+NA
+value
+
+Remark
+
+IO status
+0x0
+Warnings/Alarms
+0x0
+SOC
+0.1% 0 .. 100.0% 0x3FF
+-104,857 ..
+Consumed Ah
+0.1 Ah
+0xFFFFF
+0 Ah
+
+132
+
+20
+
+152
+
+7
+
+Temperature
+
+159
+
+1
+
+Unused
+
+°C
+
+-40 .. 86 °C 0x7F
+
+VE_REG_BMS_IO
+VE_REG_BMS_WARNINGS_ALARMS
+VE_REG_SOC
+VE_REG_CAH
+Consumed Ah = -Record value
+VE_REG_BAT_TEMPERATURE
+Temperature = Record value 40
+
+Multi RS
+Nr
+Start
+NA
+of
+Meaning
+Units Range
+bit
+value
+bits
+32
+8
+Device state
+0 .. 0xFE
+0xFF
+40
+8
+Charger Error
+0 .. 0xFE
+0xFF
+Battery
+-3276.8 ..
+48
+16
+0.1A
+0x7FFF
+current
+3276.6 A
+Battery
+0 .. 163.83
+64
+14
+0.01 V
+0x3FFF
+voltage
+V
+78
+
+2
+
+Active AC in
+
+0 .. 3
+
+0x3
+
+80
+
+16
+
+Active AC in
+1W
+power
+
+-32,768 ..
+32,766 W
+
+0x7FFF
+
+96
+
+16
+
+AC out power 1 W
+
+112
+
+16
+
+PV power
+
+1W
+
+128
+
+16
+
+Yield today
+
+0.01
+kWh
+
+144
+
+16
+
+Unused
+
+-32,768 ..
+0x7FFF
+32,766 W
+0 .. 65534
+0xFFFF
+W
+0 .. 655.34
+0xFFFF
+kWh
+
+Remark
+VE_REG_DEVICE_STATE
+VE_REG_CHR_ERROR_CODE
+VE_REG_DC_CHANNEL1_CURRENT
+VE_REG_DC_CHANNEL1_VOLTAGE
+VE_REG_AC_IN_ACTIVE
+0 = AC in 1, 1 = AC in 2,
+2 = Not connected, 3 = unknown
+VE_REG_AC_IN_1_REAL_POWER or
+VE_REG_AC_IN_2_REAL_POWER, depending
+on VE_REG_AC_IN_ACTIVE
+VE_REG_AC_OUT_REAL_POWER
+VE_REG_DC_INPUT_POWER
+VE_REG_CHR_TODAY_YIELD
+655.34 kWh is 27.3 kW@24h
+
+VE.Bus
+Nr
+Start
+of
+Meaning
+bit
+bits
+32
+8
+Device state
+40
+8
+VE.Bus error
+48
+
+16
+
+64
+
+14
+
+Units Range
+
+0 .. 0xFE
+0 .. 0xFE
+-3276.8 ..
+Battery current 0.1A
+3276.6 A
+0 .. 163.83
+Battery voltage 0.01 V
+V
+
+Victron Energy - https://wiki.victronenergy.com/
+
+NA
+value
+
+Remark
+
+0xFF
+0xFF
+
+VE_REG_DEVICE_STATE
+VE_REG_VEBUS_VEBUS_ERROR
+
+0x7FFF
+
+VE_REG_DC_CHANNEL1_CURRENT
+
+0x3FFF
+
+VE_REG_DC_CHANNEL1_VOLTAGE
+
+Last update: 2022/12/14 13:25
+
+rend:ble:extra_manufacturer_data https://wiki.victronenergy.com/rend/ble/extra_manufacturer_data
+
+Nr
+Start
+of
+Meaning
+bit
+bits
+
+Units Range
+
+78
+
+2
+
+Active AC in
+
+80
+
+19
+
+Active AC in
+power
+
+1W
+
+99
+
+19
+
+AC out power
+
+1W
+
+118
+
+2
+
+Alarm
+
+120
+
+7
+
+127
+134
+
+7
+26
+
+Battery
+temperature
+SOC
+Unused
+
+NA
+value
+
+VE_REG_AC_IN_ACTIVE
+0 = AC in 1, 1 = AC in 2,
+2 = Not connected, 3 = unknown
+VE_REG_AC_IN_1_REAL_POWER or
+-262,144 ..
+0x3FFFF VE_REG_AC_IN_2_REAL_POWER,
+262,142 W
+depending on VE_REG_AC_IN_ACTIVE
+-262,144 ..
+0x3FFFF VE_REG_AC_OUT_REAL_POWER
+262,142 W
+VE_REG_ALARM_NOTIFICATION (to be
+0 .. 2
+3
+deﬁned)
+0 = no alarm, 1 = warning, 2 = alarm
+VE_REG_BAT_TEMPERATURE
+-40 .. 86 °C 0x7F
+Temperature = Record value - 40
+0 .. 126 % 0x7F
+VE_REG_SOC
+0 .. 3
+
+1 °C
+1%
+
+Remark
+
+0x3
+
+DC Energy Meter
+Nr
+Start
+of
+Meaning
+bit
+bits
+BMV monitor
+32
+16
+mode
+48
+
+16
+
+64
+
+16
+
+80
+
+16
+
+Units Range
+
+NA value Remark
+
+–32768 ..
+32767
+-327.68 ..
+Battery voltage 0.01 V
+0x7FFF
+327.66 V
+0 ..
+Alarm reason
+0xFFFF
+-327.68 ..
+Aux voltage
+0.01 V 327.64 V
+Temperature 0.01 K 0 ..
+655.34 K
+
+VE_REG_BMV_MONITOR_MODE
+VE_REG_DC_CHANNEL1_VOLTAGE
+VE_REG_ALARM_REASON
+VE_REG_DC_CHANNEL2_VOLTAGE
+VE_REG_BAT_TEMPERATURE
+VE_REG_BMV_AUX_INPUT
+0 ⇒ Aux voltage :
+VE_REG_DC_CHANNEL2_VOLTAGE
+2 ⇒ Temperature :
+VE_REG_BAT_TEMPERATURE
+3 ⇒ none
+
+96
+
+2
+
+Aux input
+
+0 .. 3
+
+0x3
+
+98
+
+22
+
+Battery current 0.001A
+
+-4194 ..
+4194 A
+
+0x3FFFFF VE_REG_DC_CHANNEL1_CURRENT_MA
+
+120
+
+40
+
+Unused
+
+From:
+https://wiki.victronenergy.com/ - Victron Energy
+Permanent link:
+https://wiki.victronenergy.com/rend/ble/extra_manufacturer_data
+Last update: 2022/12/14 13:25
+https://wiki.victronenergy.com/
+
+Printed on 2022/12/14 13:27
+
+2022/12/14 13:27
+
+Victron Energy - https://wiki.victronenergy.com/
+
+9/9
+
+Extra manufacturer Data
+
+
