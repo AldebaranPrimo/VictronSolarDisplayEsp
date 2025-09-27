@@ -17,9 +17,9 @@ void ui_init(void);
 
 /**
  * BLE data callback to update the UI with new panel data.
- * @param d Pointer to the victronPanelData_t structure containing sensor readings.
+ * @param d Pointer to the victron_data_t structure containing sensor readings.
  */
-void ui_on_panel_data(const victronPanelData_t *d);
+void ui_on_panel_data(const victron_data_t *d);
 void ui_set_ble_mac(const uint8_t *mac);
 
 #ifdef __cplusplus
