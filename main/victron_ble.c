@@ -1,6 +1,7 @@
 /* victron_ble.c */
 #include "victron_ble.h"
 #include "config_storage.h"
+#include <stdbool.h>
 #include <stdio.h>
 #include <string.h>
 #include "esp_log.h"
@@ -35,6 +36,10 @@ void victron_ble_register_callback(victron_data_cb_t cb) { data_cb = cb; }
 static void ble_host_task(void *param);
 static int ble_gap_event_handler(struct ble_gap_event *event, void *arg);
 static void ble_app_on_sync(void);
+static bool parse_solar_payload(const uint8_t *buf, size_t len, victron_solar_data_t *out);
+static bool parse_battery_payload(const uint8_t *buf, size_t len, victron_battery_data_t *out);
+static inline uint16_t read_u16_le(const uint8_t *buf);
+static inline int32_t sign_extend(uint32_t value, uint8_t bits);
 
 void victron_ble_init(void) {
     ESP_LOGI(TAG, "Initializing NVS for Victron BLE");
@@ -98,7 +103,6 @@ static int ble_gap_event_handler(struct ble_gap_event *event, void *arg) {
     //ESP_LOG_BUFFER_HEX(TAG, fields.mfg_data, fields.mfg_data_len);
 
     if (mdata->vendorID != 0x02e1 ||
-        mdata->victronRecordType != 0x01 ||
         mdata->encryptKeyMatch != aes_key[0]) {
         return 0;
     }
@@ -124,12 +128,102 @@ static int ble_gap_event_handler(struct ble_gap_event *event, void *arg) {
     //ESP_LOGV(TAG, "Decrypted payload (nonce=0x%04X):", nonce);
     //ESP_LOG_BUFFER_HEX(TAG, output, encr_size);
 
-    victronPanelData_t panel;
-    memcpy(&panel, output, sizeof(panel));
-    if ((panel.outputCurrentHi & 0xFE) != 0xFE) return 0;
+    victron_data_t parsed = {
+        .type = VICTRON_DEVICE_TYPE_UNKNOWN,
+    };
+
+    switch (mdata->victronRecordType) {
+    case VICTRON_DEVICE_TYPE_SOLAR_CHARGER:
+        if (!parse_solar_payload(output, (size_t)encr_size, &parsed.payload.solar)) {
+            return 0;
+        }
+        parsed.type = VICTRON_DEVICE_TYPE_SOLAR_CHARGER;
+        break;
+    case VICTRON_DEVICE_TYPE_BATTERY_MONITOR:
+        if (!parse_battery_payload(output, (size_t)encr_size, &parsed.payload.battery)) {
+            return 0;
+        }
+        parsed.type = VICTRON_DEVICE_TYPE_BATTERY_MONITOR;
+        break;
+    default:
+        return 0;
+    }
 
     ui_set_ble_mac(event->disc.addr.val);
 
-    if (data_cb) data_cb(&panel);
+    if (data_cb) data_cb(&parsed);
     return 0;
+}
+
+static bool parse_solar_payload(const uint8_t *buf, size_t len, victron_solar_data_t *out)
+{
+    if (len < 12 || out == NULL) {
+        return false;
+    }
+
+    out->device_state = buf[0];
+    out->error_code = buf[1];
+    out->battery_voltage_centi = (int16_t)read_u16_le(&buf[2]);
+    out->battery_current_deci = (int16_t)read_u16_le(&buf[4]);
+    out->today_yield_centikwh = read_u16_le(&buf[6]);
+    out->input_power_w = read_u16_le(&buf[8]);
+
+    if ((buf[11] & 0xFE) != 0xFE) {
+        return false;
+    }
+    uint16_t load_raw = (uint16_t)buf[10] | ((uint16_t)(buf[11] & 0x01) << 8);
+    out->load_current_deci = load_raw;
+
+    return true;
+}
+
+static bool parse_battery_payload(const uint8_t *buf, size_t len, victron_battery_data_t *out)
+{
+    if (len < 16 || out == NULL) {
+        return false;
+    }
+
+    out->time_to_go_minutes = read_u16_le(&buf[0]);
+    out->battery_voltage_centi = read_u16_le(&buf[2]);
+    out->alarm_reason = read_u16_le(&buf[4]);
+    out->aux_value = read_u16_le(&buf[6]);
+
+    uint64_t tail = 0;
+    for (size_t i = 0; i < 8; ++i) {
+        tail |= ((uint64_t)buf[8 + i]) << (8 * i);
+    }
+
+    out->aux_input = (uint8_t)(tail & 0x03u);
+    tail >>= 2;
+
+    uint32_t current_bits = (uint32_t)(tail & ((1u << 22) - 1u));
+    tail >>= 22;
+
+    uint32_t consumed_bits = (uint32_t)(tail & ((1u << 20) - 1u));
+    tail >>= 20;
+
+    uint32_t soc_bits = (uint32_t)(tail & ((1u << 10) - 1u));
+
+    out->battery_current_milli = sign_extend(current_bits, 22);
+    out->consumed_ah_deci = sign_extend(consumed_bits, 20);
+    if (soc_bits > 1000u) {
+        soc_bits = 1000u;
+    }
+    out->soc_deci_percent = (uint16_t)soc_bits;
+
+    return true;
+}
+
+static inline uint16_t read_u16_le(const uint8_t *buf)
+{
+    return (uint16_t)buf[0] | ((uint16_t)buf[1] << 8);
+}
+
+static inline int32_t sign_extend(uint32_t value, uint8_t bits)
+{
+    if (bits == 0 || bits >= 32) {
+        return (int32_t)value;
+    }
+    uint32_t shift = 32u - (uint32_t)bits;
+    return (int32_t)((int32_t)(value << shift) >> shift);
 }

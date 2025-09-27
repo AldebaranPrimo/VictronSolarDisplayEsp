@@ -26,10 +26,16 @@ static const char *TAG_UI = "UI_MODULE";
 // LVGL objects & styles
 static lv_obj_t *tabview, *tab_live, *tab_info, *kb;
 static lv_style_t style_title, style_val, style_big, style_medium;
+static lv_obj_t *cont_solar, *cont_battery;
 static lv_obj_t *lbl_battV, *lbl_battA, *lbl_loadA;
 static lv_obj_t *lbl_solar, *lbl_yield, *lbl_state, *lbl_error;
 static lv_obj_t *solar_symbol, *bolt_symbol;
-static lv_obj_t *ta_mac, *ta_key, *lbl_load_watt;
+static lv_obj_t *lbl_load_watt;
+static lv_obj_t *lbl_device_type;
+static lv_obj_t *lbl_bmon_voltage, *lbl_bmon_current, *lbl_bmon_soc;
+static lv_obj_t *lbl_bmon_ttg, *lbl_bmon_consumed, *lbl_bmon_aux;
+static lv_obj_t *lbl_bmon_alarm;
+static lv_obj_t *ta_mac, *ta_key;
 
 // Global brightness variable
 uint8_t brightness = 100;
@@ -44,6 +50,7 @@ static uint8_t screensaver_brightness;
 static uint16_t screensaver_timeout;
 static lv_timer_t *screensaver_timer = NULL;
 static bool screensaver_active = false;
+static victron_device_type_t current_device_type = VICTRON_DEVICE_TYPE_UNKNOWN;
 
 // Forward declarations
 static const char *err_str(uint8_t e);
@@ -66,6 +73,10 @@ static void spinbox_ss_time_increment_event_cb(lv_event_t *e);
 static void spinbox_ss_time_decrement_event_cb(lv_event_t *e);
 // Forward declarations (already present, just for clarity)
 static void tabview_touch_event_cb(lv_event_t *e);
+static void ensure_device_layout(victron_device_type_t type);
+static const char *device_type_name(victron_device_type_t type);
+static void format_aux_value(uint8_t aux_input, uint16_t aux_value,
+                             char *out, size_t out_len);
 
 void ui_init(void) {
     // Initialize NVS
@@ -137,8 +148,16 @@ void ui_init(void) {
 #endif
     lv_style_set_text_color(&style_val, lv_color_white());
 
-    // Live tab layout
-    lv_obj_t *row = lv_obj_create(tab_live);
+    // Live tab layout (solar view)
+    cont_solar = lv_obj_create(tab_live);
+    lv_obj_set_size(cont_solar, lv_pct(100), lv_pct(100));
+    lv_obj_set_style_bg_opa(cont_solar, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(cont_solar, 0, 0);
+    lv_obj_set_style_outline_width(cont_solar, 0, 0);
+    lv_obj_set_style_pad_all(cont_solar, 0, 0);
+    lv_obj_clear_flag(cont_solar, LV_OBJ_FLAG_SCROLLABLE);
+
+    lv_obj_t *row = lv_obj_create(cont_solar);
     lv_obj_set_size(row, lv_pct(100), 100);
     lv_obj_set_flex_flow(row, LV_STYLE_PAD_ROW);
     lv_obj_set_flex_align(row, LV_FLEX_ALIGN_SPACE_EVENLY,
@@ -149,8 +168,8 @@ void ui_init(void) {
     lv_obj_set_style_outline_width(row, 0, 0);
 
 
-    #define NEW_BOX(name, txt, ptr) do { \
-        lv_obj_t *b = lv_obj_create(row); \
+    #define NEW_BOX(parent, name, txt, ptr) do { \
+        lv_obj_t *b = lv_obj_create(parent); \
         lv_obj_set_size(b, lv_pct(30), 80); \
         lv_obj_set_style_pad_all(b, 8, 0); \
         lv_obj_set_style_bg_opa(b, LV_OPA_TRANSP, 0); \
@@ -166,40 +185,87 @@ void ui_init(void) {
         lv_obj_align(*(ptr), LV_ALIGN_CENTER, 0, 10); \
     } while(0)
 
-    NEW_BOX("Batt V", "0.00 V", &lbl_battV);
-    NEW_BOX("Batt A", "0.0 A",  &lbl_battA);
-    NEW_BOX("Load A", "0.0 A", &lbl_loadA);
+    NEW_BOX(row, "Batt V", "0.00 V", &lbl_battV);
+    NEW_BOX(row, "Batt A", "0.0 A",  &lbl_battA);
+    NEW_BOX(row, "Load A", "0.0 A", &lbl_loadA);
 
-    lbl_state = lv_label_create(tab_live);
+    lbl_state = lv_label_create(cont_solar);
     lv_obj_add_style(lbl_state, &style_big, 0);
     lv_label_set_text(lbl_state, "State");
     lv_obj_align(lbl_state, LV_ALIGN_CENTER, 0, 50);
 
     // Icons and labels
-    solar_symbol = lv_label_create(tab_live);
+    solar_symbol = lv_label_create(cont_solar);
     lv_obj_set_style_text_font(solar_symbol, &font_awesome_solar_panel_40, 0);
     lv_label_set_text(solar_symbol, "\xEF\x96\xBA");
     lv_obj_align(solar_symbol, LV_ALIGN_BOTTOM_LEFT, 25, -55);
 
-    bolt_symbol = lv_label_create(tab_live);
+    bolt_symbol = lv_label_create(cont_solar);
     lv_obj_set_style_text_font(bolt_symbol, &font_awesome_bolt_40, 0);
     lv_label_set_text(bolt_symbol, "\xEF\x83\xA7");
     lv_obj_align(bolt_symbol, LV_ALIGN_BOTTOM_RIGHT, -28, -55);
 
-    lbl_solar = lv_label_create(tab_live);
+    lbl_solar = lv_label_create(cont_solar);
     lv_obj_add_style(lbl_solar, &style_title, 0);
     lv_label_set_text(lbl_solar, "");
     lv_obj_align(lbl_solar, LV_ALIGN_BOTTOM_LEFT, 32, -8);
 
-    lbl_yield = lv_label_create(tab_live);
+    lbl_yield = lv_label_create(cont_solar);
     lv_obj_add_style(lbl_yield, &style_title, 0);
     lv_label_set_text(lbl_yield, "");
     lv_obj_align(lbl_yield, LV_ALIGN_BOTTOM_MID, 0, -8);
 
-    lbl_load_watt = lv_label_create(tab_live);
+    lbl_load_watt = lv_label_create(cont_solar);
     lv_obj_add_style(lbl_load_watt, &style_title, 0);
     lv_label_set_text(lbl_load_watt, "");
     lv_obj_align(lbl_load_watt, LV_ALIGN_BOTTOM_RIGHT, -31, -8);
+
+    // Live tab layout (battery monitor view, hidden by default)
+    cont_battery = lv_obj_create(tab_live);
+    lv_obj_set_size(cont_battery, lv_pct(100), lv_pct(100));
+    lv_obj_set_style_bg_opa(cont_battery, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(cont_battery, 0, 0);
+    lv_obj_set_style_outline_width(cont_battery, 0, 0);
+    lv_obj_set_style_pad_all(cont_battery, 0, 0);
+    lv_obj_clear_flag(cont_battery, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_flex_flow(cont_battery, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_style_pad_row(cont_battery, 12, 0);
+    lv_obj_add_flag(cont_battery, LV_OBJ_FLAG_HIDDEN);
+
+    lv_obj_t *bat_row1 = lv_obj_create(cont_battery);
+    lv_obj_set_size(bat_row1, lv_pct(100), 100);
+    lv_obj_set_flex_flow(bat_row1, LV_STYLE_PAD_ROW);
+    lv_obj_set_flex_align(bat_row1, LV_FLEX_ALIGN_SPACE_EVENLY,
+                          LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_clear_flag(bat_row1, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_style_bg_color(bat_row1, lv_color_hex(0x223355), 0);
+    lv_obj_set_style_border_width(bat_row1, 0, 0);
+    lv_obj_set_style_outline_width(bat_row1, 0, 0);
+
+    NEW_BOX(bat_row1, "Batt V", "0.00 V", &lbl_bmon_voltage);
+    NEW_BOX(bat_row1, "Current", "0.00 A", &lbl_bmon_current);
+    NEW_BOX(bat_row1, "SOC", "0.0 %", &lbl_bmon_soc);
+
+    lv_obj_t *bat_row2 = lv_obj_create(cont_battery);
+    lv_obj_set_size(bat_row2, lv_pct(100), 100);
+    lv_obj_set_flex_flow(bat_row2, LV_STYLE_PAD_ROW);
+    lv_obj_set_flex_align(bat_row2, LV_FLEX_ALIGN_SPACE_EVENLY,
+                          LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_clear_flag(bat_row2, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_style_bg_color(bat_row2, lv_color_hex(0x223355), 0);
+    lv_obj_set_style_border_width(bat_row2, 0, 0);
+    lv_obj_set_style_outline_width(bat_row2, 0, 0);
+
+    NEW_BOX(bat_row2, "TTG", "0h 00m", &lbl_bmon_ttg);
+    NEW_BOX(bat_row2, "Consumed", "0.0 Ah", &lbl_bmon_consumed);
+    NEW_BOX(bat_row2, "Aux", "N/A", &lbl_bmon_aux);
+
+    lbl_bmon_alarm = lv_label_create(cont_battery);
+    lv_obj_add_style(lbl_bmon_alarm, &style_big, 0);
+    lv_label_set_text(lbl_bmon_alarm, "Alarm: none");
+    lv_obj_align(lbl_bmon_alarm, LV_ALIGN_BOTTOM_MID, 0, -40);
+
+    #undef NEW_BOX
 
     // Wi-Fi SSID
     lv_obj_t *lbl_ssid = lv_label_create(tab_info);
@@ -248,6 +314,11 @@ void ui_init(void) {
     lv_obj_add_style(lbl_error, &style_title, 0);
     lv_label_set_text(lbl_error, "Err: 0");
     lv_obj_align(lbl_error, LV_ALIGN_TOP_LEFT, 400, 180);
+
+    lbl_device_type = lv_label_create(tab_info);
+    lv_obj_add_style(lbl_device_type, &style_title, 0);
+    lv_label_set_text(lbl_device_type, "Device: --");
+    lv_obj_align(lbl_device_type, LV_ALIGN_TOP_LEFT, 400, 140);
 
     lv_obj_t *lmac = lv_label_create(tab_info);
     lv_obj_add_style(lmac, &style_title, 0);
@@ -405,33 +476,86 @@ void ui_init(void) {
     lvgl_port_unlock();
 }
 
-void ui_on_panel_data(const victronPanelData_t *d) {
+void ui_on_panel_data(const victron_data_t *d) {
+    if (d == NULL) {
+        return;
+    }
+
     lvgl_port_lock(0);
 
-    int battVraw = d->batteryVoltage;
-    int battV_i  = battVraw / 100;
-    int battV_f  = battVraw % 100;
+    const char *type_str = device_type_name(d->type);
+    if (lbl_device_type) {
+        lv_label_set_text_fmt(lbl_device_type, "Device: %s", type_str);
+    }
 
-    int battAraw = d->batteryCurrent;
-    int battA_i  = battAraw / 10;
-    int battA_f  = abs(battAraw % 10);
+    ensure_device_layout(d->type);
 
-    int loadRaw = ((d->outputCurrentHi & 1) << 8) | d->outputCurrentLo;
-    int load_i = loadRaw / 10;
-    int load_f = loadRaw % 10;
+    switch (d->type) {
+    case VICTRON_DEVICE_TYPE_SOLAR_CHARGER: {
+        const victron_solar_data_t *s = &d->payload.solar;
 
-    uint32_t solarW   = d->inputPower;
-    uint32_t yieldWh  = (uint32_t)(d->todayYield * 0.01f * 1000.0f);
-    uint32_t loadWatt = (loadRaw * battVraw) / 1000;
+        int battVraw = s->battery_voltage_centi;
+        int battV_i  = battVraw / 100;
+        int battV_f  = abs(battVraw % 100);
 
-    lv_label_set_text_fmt(lbl_battV, "%d.%02d V", battV_i, battV_f);
-    lv_label_set_text_fmt(lbl_battA, "%d.%1d A", battA_i, battA_f);
-    lv_label_set_text_fmt(lbl_loadA, "%d.%1d A", load_i, load_f);
-    lv_label_set_text_fmt(lbl_solar, "%lu W", solarW);
-    lv_label_set_text_fmt(lbl_yield, "Yield: %lu Wh", yieldWh);
-    lv_label_set_text_fmt(lbl_state, "%s", charger_state_str(d->deviceState));
-    lv_label_set_text_fmt(lbl_error, "%s", err_str(d->errorCode));
-    lv_label_set_text_fmt(lbl_load_watt, "%lu W", loadWatt);
+        int battAraw = s->battery_current_deci;
+        int battA_i  = battAraw / 10;
+        int battA_f  = abs(battAraw % 10);
+
+        int loadRaw = s->load_current_deci;
+        int load_i = loadRaw / 10;
+        int load_f = abs(loadRaw % 10);
+
+        uint32_t solarW   = s->input_power_w;
+        uint32_t yieldWh  = (uint32_t)s->today_yield_centikwh * 10u;
+        uint32_t loadWatt = (loadRaw * battVraw) / 1000;
+
+        lv_label_set_text_fmt(lbl_battV, "%d.%02d V", battV_i, battV_f);
+        lv_label_set_text_fmt(lbl_battA, "%d.%1d A", battA_i, battA_f);
+        lv_label_set_text_fmt(lbl_loadA, "%d.%1d A", load_i, load_f);
+        lv_label_set_text_fmt(lbl_solar, "%lu W", (unsigned long)solarW);
+        lv_label_set_text_fmt(lbl_yield, "Yield: %lu Wh", (unsigned long)yieldWh);
+        lv_label_set_text_fmt(lbl_state, "%s", charger_state_str(s->device_state));
+        lv_label_set_text_fmt(lbl_error, "%s", err_str(s->error_code));
+        lv_label_set_text_fmt(lbl_load_watt, "%lu W", (unsigned long)loadWatt);
+        break;
+    }
+    case VICTRON_DEVICE_TYPE_BATTERY_MONITOR: {
+        const victron_battery_data_t *b = &d->payload.battery;
+
+        lv_label_set_text_fmt(lbl_bmon_voltage, "%.2f V",
+                              b->battery_voltage_centi / 100.0f);
+        lv_label_set_text_fmt(lbl_bmon_current, "%.2f A",
+                              b->battery_current_milli / 1000.0f);
+        lv_label_set_text_fmt(lbl_bmon_soc, "%.1f %%",
+                              b->soc_deci_percent / 10.0f);
+
+        uint16_t ttg = b->time_to_go_minutes;
+        lv_label_set_text_fmt(lbl_bmon_ttg, "%uh %02um",
+                              (unsigned)(ttg / 60), (unsigned)(ttg % 60));
+
+        lv_label_set_text_fmt(lbl_bmon_consumed, "%.1f Ah",
+                              b->consumed_ah_deci / 10.0f);
+
+        char aux_buf[32];
+        format_aux_value(b->aux_input, b->aux_value, aux_buf, sizeof(aux_buf));
+        lv_label_set_text(lbl_bmon_aux, aux_buf);
+
+        if (b->alarm_reason == 0) {
+            lv_label_set_text(lbl_bmon_alarm, "Alarm: none");
+            lv_label_set_text(lbl_error, "Alarm: none");
+        } else {
+            lv_label_set_text_fmt(lbl_bmon_alarm, "Alarm: 0x%04X",
+                                  b->alarm_reason);
+            lv_label_set_text_fmt(lbl_error, "Alarm: 0x%04X",
+                                  b->alarm_reason);
+        }
+        break;
+    }
+    default:
+        lv_label_set_text(lbl_error, "Unknown device type");
+        break;
+    }
 
     lvgl_port_unlock();
 }
@@ -668,6 +792,80 @@ static void spinbox_ss_time_decrement_event_cb(lv_event_t *e) {
 }
 
 // Add this callback implementation at file scope:
+static void ensure_device_layout(victron_device_type_t type)
+{
+    if (type == current_device_type) {
+        return;
+    }
+
+    if (type == VICTRON_DEVICE_TYPE_SOLAR_CHARGER) {
+        if (cont_solar) {
+            lv_obj_clear_flag(cont_solar, LV_OBJ_FLAG_HIDDEN);
+        }
+        if (cont_battery) {
+            lv_obj_add_flag(cont_battery, LV_OBJ_FLAG_HIDDEN);
+        }
+    } else if (type == VICTRON_DEVICE_TYPE_BATTERY_MONITOR) {
+        if (cont_battery) {
+            lv_obj_clear_flag(cont_battery, LV_OBJ_FLAG_HIDDEN);
+        }
+        if (cont_solar) {
+            lv_obj_add_flag(cont_solar, LV_OBJ_FLAG_HIDDEN);
+        }
+    }
+
+    current_device_type = type;
+}
+
+static const char *device_type_name(victron_device_type_t type)
+{
+    switch (type) {
+    case VICTRON_DEVICE_TYPE_SOLAR_CHARGER:
+        return "Solar Charger";
+    case VICTRON_DEVICE_TYPE_BATTERY_MONITOR:
+        return "Battery Monitor";
+    default:
+        return "Unknown";
+    }
+}
+
+static void format_aux_value(uint8_t aux_input, uint16_t aux_value,
+                             char *out, size_t out_len)
+{
+    if (out_len == 0) {
+        return;
+    }
+
+    const uint16_t AUX_NA = 0xFFFF;
+    switch (aux_input & 0x03u) {
+    case 0:
+        if (aux_value == AUX_NA) {
+            snprintf(out, out_len, "Aux N/A");
+        } else {
+            snprintf(out, out_len, "Aux %.2f V", aux_value / 100.0f);
+        }
+        break;
+    case 1:
+        if (aux_value == AUX_NA) {
+            snprintf(out, out_len, "Mid N/A");
+        } else {
+            snprintf(out, out_len, "Mid %.2f V", aux_value / 100.0f);
+        }
+        break;
+    case 2:
+        if (aux_value == AUX_NA) {
+            snprintf(out, out_len, "Temp N/A");
+        } else {
+            float temp_c = (aux_value / 100.0f) - 273.15f;
+            snprintf(out, out_len, "Temp %.1f C", temp_c);
+        }
+        break;
+    default:
+        snprintf(out, out_len, "None");
+        break;
+    }
+}
+
 static void tabview_touch_event_cb(lv_event_t *e) {
     screensaver_wake();
 }
