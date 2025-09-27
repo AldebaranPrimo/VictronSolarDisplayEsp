@@ -1,6 +1,7 @@
 /* ui.c */
 #include "ui.h"
 #include <stdlib.h>
+#include <stdbool.h>
 #include <inttypes.h>
 #include <lvgl.h>
 #include "display.h"
@@ -34,7 +35,6 @@ static lv_obj_t *lbl_load_watt;
 static lv_obj_t *lbl_device_type;
 static lv_obj_t *lbl_bmon_voltage, *lbl_bmon_current, *lbl_bmon_soc;
 static lv_obj_t *lbl_bmon_ttg, *lbl_bmon_consumed, *lbl_bmon_aux;
-static lv_obj_t *lbl_bmon_alarm;
 static lv_obj_t *ta_mac, *ta_key;
 
 // Global brightness variable
@@ -77,6 +77,13 @@ static void ensure_device_layout(victron_device_type_t type);
 static const char *device_type_name(victron_device_type_t type);
 static void format_aux_value(uint8_t aux_input, uint16_t aux_value,
                              char *out, size_t out_len);
+static void label_set_unsigned_fixed(lv_obj_t *label, unsigned value,
+                                     unsigned scale, uint8_t frac_digits,
+                                     const char *unit);
+static void label_set_signed_fixed(lv_obj_t *label, int value,
+                                   unsigned scale, uint8_t frac_digits,
+                                   const char *unit);
+static int round_div_signed(int value, unsigned divisor);
 
 void ui_init(void) {
     // Initialize NVS
@@ -168,7 +175,7 @@ void ui_init(void) {
     lv_obj_set_style_outline_width(row, 0, 0);
 
 
-    #define NEW_BOX(parent, name, txt, ptr) do { \
+    #define NEW_BOX(parent, name, txt, ptr, value_style) do { \
         lv_obj_t *b = lv_obj_create(parent); \
         lv_obj_set_size(b, lv_pct(30), 80); \
         lv_obj_set_style_pad_all(b, 8, 0); \
@@ -181,13 +188,15 @@ void ui_init(void) {
         lv_obj_align(h, LV_ALIGN_TOP_MID, 0, 0); \
         *(ptr) = lv_label_create(b); \
         lv_label_set_text(*(ptr), txt); \
-        lv_obj_add_style(*(ptr), &style_val, 0); \
+        if (value_style != NULL) { \
+            lv_obj_add_style(*(ptr), value_style, 0); \
+        } \
         lv_obj_align(*(ptr), LV_ALIGN_CENTER, 0, 10); \
     } while(0)
 
-    NEW_BOX(row, "Batt V", "0.00 V", &lbl_battV);
-    NEW_BOX(row, "Batt A", "0.0 A",  &lbl_battA);
-    NEW_BOX(row, "Load A", "0.0 A", &lbl_loadA);
+    NEW_BOX(row, "Batt V", "0.00 V", &lbl_battV, &style_val);
+    NEW_BOX(row, "Batt A", "0.0 A",  &lbl_battA, &style_val);
+    NEW_BOX(row, "Load A", "0.0 A", &lbl_loadA, &style_val);
 
     lbl_state = lv_label_create(cont_solar);
     lv_obj_add_style(lbl_state, &style_big, 0);
@@ -226,14 +235,14 @@ void ui_init(void) {
     lv_obj_set_style_bg_opa(cont_battery, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(cont_battery, 0, 0);
     lv_obj_set_style_outline_width(cont_battery, 0, 0);
-    lv_obj_set_style_pad_all(cont_battery, 0, 0);
+    lv_obj_set_style_pad_all(cont_battery, 12, 0);
     lv_obj_clear_flag(cont_battery, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_set_flex_flow(cont_battery, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_style_pad_row(cont_battery, 12, 0);
+    lv_obj_set_style_pad_row(cont_battery, 18, 0);
     lv_obj_add_flag(cont_battery, LV_OBJ_FLAG_HIDDEN);
 
     lv_obj_t *bat_row1 = lv_obj_create(cont_battery);
-    lv_obj_set_size(bat_row1, lv_pct(100), 100);
+    lv_obj_set_size(bat_row1, lv_pct(100), 110);
     lv_obj_set_flex_flow(bat_row1, LV_STYLE_PAD_ROW);
     lv_obj_set_flex_align(bat_row1, LV_FLEX_ALIGN_SPACE_EVENLY,
                           LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
@@ -241,13 +250,15 @@ void ui_init(void) {
     lv_obj_set_style_bg_color(bat_row1, lv_color_hex(0x223355), 0);
     lv_obj_set_style_border_width(bat_row1, 0, 0);
     lv_obj_set_style_outline_width(bat_row1, 0, 0);
+    lv_obj_set_style_pad_all(bat_row1, 12, 0);
+    lv_obj_set_style_pad_column(bat_row1, 16, 0);
 
-    NEW_BOX(bat_row1, "Batt V", "0.00 V", &lbl_bmon_voltage);
-    NEW_BOX(bat_row1, "Current", "0.00 A", &lbl_bmon_current);
-    NEW_BOX(bat_row1, "SOC", "0.0 %", &lbl_bmon_soc);
+    NEW_BOX(bat_row1, "Batt V", "0.00 V", &lbl_bmon_voltage, &style_medium);
+    NEW_BOX(bat_row1, "Current", "0.00 A", &lbl_bmon_current, &style_medium);
+    NEW_BOX(bat_row1, "SOC", "0.0 %", &lbl_bmon_soc, &style_medium);
 
     lv_obj_t *bat_row2 = lv_obj_create(cont_battery);
-    lv_obj_set_size(bat_row2, lv_pct(100), 100);
+    lv_obj_set_size(bat_row2, lv_pct(100), 110);
     lv_obj_set_flex_flow(bat_row2, LV_STYLE_PAD_ROW);
     lv_obj_set_flex_align(bat_row2, LV_FLEX_ALIGN_SPACE_EVENLY,
                           LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
@@ -255,15 +266,12 @@ void ui_init(void) {
     lv_obj_set_style_bg_color(bat_row2, lv_color_hex(0x223355), 0);
     lv_obj_set_style_border_width(bat_row2, 0, 0);
     lv_obj_set_style_outline_width(bat_row2, 0, 0);
+    lv_obj_set_style_pad_all(bat_row2, 12, 0);
+    lv_obj_set_style_pad_column(bat_row2, 16, 0);
 
-    NEW_BOX(bat_row2, "TTG", "0h 00m", &lbl_bmon_ttg);
-    NEW_BOX(bat_row2, "Consumed", "0.0 Ah", &lbl_bmon_consumed);
-    NEW_BOX(bat_row2, "Aux", "N/A", &lbl_bmon_aux);
-
-    lbl_bmon_alarm = lv_label_create(cont_battery);
-    lv_obj_add_style(lbl_bmon_alarm, &style_big, 0);
-    lv_label_set_text(lbl_bmon_alarm, "Alarm: none");
-    lv_obj_align(lbl_bmon_alarm, LV_ALIGN_BOTTOM_MID, 0, -40);
+    NEW_BOX(bat_row2, "TTG", "0h 00m", &lbl_bmon_ttg, &style_medium);
+    NEW_BOX(bat_row2, "Consumed", "0.0 Ah", &lbl_bmon_consumed, &style_medium);
+    NEW_BOX(bat_row2, "Aux", "N/A", &lbl_bmon_aux, &style_medium);
 
     #undef NEW_BOX
 
@@ -523,30 +531,32 @@ void ui_on_panel_data(const victron_data_t *d) {
     case VICTRON_DEVICE_TYPE_BATTERY_MONITOR: {
         const victron_battery_data_t *b = &d->payload.battery;
 
-        lv_label_set_text_fmt(lbl_bmon_voltage, "%.2f V",
-                              b->battery_voltage_centi / 100.0f);
-        lv_label_set_text_fmt(lbl_bmon_current, "%.2f A",
-                              b->battery_current_milli / 1000.0f);
-        lv_label_set_text_fmt(lbl_bmon_soc, "%.1f %%",
-                              b->soc_deci_percent / 10.0f);
+        label_set_unsigned_fixed(lbl_bmon_voltage,
+                                 (unsigned)b->battery_voltage_centi,
+                                 100, 2, " V");
+
+        int current_cent = round_div_signed((int)b->battery_current_milli, 10);
+        label_set_signed_fixed(lbl_bmon_current, current_cent, 100, 2, " A");
+
+        label_set_unsigned_fixed(lbl_bmon_soc,
+                                 (unsigned)b->soc_deci_percent,
+                                 10, 1, " %");
 
         uint16_t ttg = b->time_to_go_minutes;
         lv_label_set_text_fmt(lbl_bmon_ttg, "%uh %02um",
                               (unsigned)(ttg / 60), (unsigned)(ttg % 60));
 
-        lv_label_set_text_fmt(lbl_bmon_consumed, "%.1f Ah",
-                              b->consumed_ah_deci / 10.0f);
+        label_set_signed_fixed(lbl_bmon_consumed,
+                               (int)b->consumed_ah_deci,
+                               10, 1, " Ah");
 
         char aux_buf[32];
         format_aux_value(b->aux_input, b->aux_value, aux_buf, sizeof(aux_buf));
         lv_label_set_text(lbl_bmon_aux, aux_buf);
 
         if (b->alarm_reason == 0) {
-            lv_label_set_text(lbl_bmon_alarm, "Alarm: none");
-            lv_label_set_text(lbl_error, "Alarm: none");
+            lv_label_set_text(lbl_error, "");
         } else {
-            lv_label_set_text_fmt(lbl_bmon_alarm, "Alarm: 0x%04X",
-                                  b->alarm_reason);
             lv_label_set_text_fmt(lbl_error, "Alarm: 0x%04X",
                                   b->alarm_reason);
         }
@@ -829,6 +839,144 @@ static const char *device_type_name(victron_device_type_t type)
     }
 }
 
+static size_t append_text(char *dst, size_t max, const char *text)
+{
+    if (max == 0) {
+        return 0;
+    }
+
+    size_t i = 0;
+    while (i < max - 1 && text[i] != '\0') {
+        dst[i] = text[i];
+        ++i;
+    }
+    dst[i] = '\0';
+    return i;
+}
+
+static size_t write_uint(char *dst, size_t max, unsigned value)
+{
+    if (max == 0) {
+        return 0;
+    }
+
+    if (value == 0) {
+        dst[0] = '0';
+        if (max > 1) {
+            dst[1] = '\0';
+        }
+        return 1;
+    }
+
+    char tmp[16];
+    size_t pos = 0;
+    while (value > 0 && pos < sizeof(tmp)) {
+        tmp[pos++] = (char)('0' + (value % 10));
+        value /= 10;
+    }
+
+    size_t i = 0;
+    while (pos > 0 && i < max - 1) {
+        dst[i++] = tmp[--pos];
+    }
+    dst[i] = '\0';
+    return i;
+}
+
+static size_t build_unsigned_fixed(char *buf, size_t max,
+                                   unsigned value, unsigned scale,
+                                   uint8_t frac_digits)
+{
+    if (max == 0) {
+        return 0;
+    }
+
+    size_t idx = write_uint(buf, max, value / scale);
+    if (idx >= max - 1 || frac_digits == 0) {
+        return idx;
+    }
+
+    buf[idx++] = '.';
+    buf[idx] = '\0';
+
+    unsigned frac = value % scale;
+    unsigned divisor = scale;
+    for (uint8_t i = 0; i < frac_digits && idx < max - 1; ++i) {
+        divisor /= 10U;
+        unsigned digit = divisor ? frac / divisor : 0U;
+        buf[idx++] = (char)('0' + digit);
+        buf[idx] = '\0';
+        if (divisor) {
+            frac %= divisor;
+        }
+    }
+
+    return idx;
+}
+
+static size_t build_signed_fixed(char *buf, size_t max, int value,
+                                 unsigned scale, uint8_t frac_digits)
+{
+    if (max == 0) {
+        return 0;
+    }
+
+    size_t idx = 0;
+    bool negative = value < 0;
+    unsigned abs_val = negative ? (unsigned)(-value) : (unsigned)value;
+    if (negative && abs_val != 0 && idx < max - 1) {
+        buf[idx++] = '-';
+    }
+
+    size_t written = build_unsigned_fixed(buf + idx, max - idx,
+                                          abs_val, scale, frac_digits);
+    return idx + written;
+}
+
+static void label_set_unsigned_fixed(lv_obj_t *label, unsigned value,
+                                     unsigned scale, uint8_t frac_digits,
+                                     const char *unit)
+{
+    char number[24] = {0};
+    build_unsigned_fixed(number, sizeof(number), value, scale, frac_digits);
+
+    char text[32] = {0};
+    size_t idx = append_text(text, sizeof(text), number);
+    if (unit != NULL && idx < sizeof(text) - 1) {
+        append_text(text + idx, sizeof(text) - idx, unit);
+    }
+
+    lv_label_set_text(label, text);
+}
+
+static void label_set_signed_fixed(lv_obj_t *label, int value,
+                                   unsigned scale, uint8_t frac_digits,
+                                   const char *unit)
+{
+    char number[24] = {0};
+    build_signed_fixed(number, sizeof(number), value, scale, frac_digits);
+
+    char text[32] = {0};
+    size_t idx = append_text(text, sizeof(text), number);
+    if (unit != NULL && idx < sizeof(text) - 1) {
+        append_text(text + idx, sizeof(text) - idx, unit);
+    }
+
+    lv_label_set_text(label, text);
+}
+
+static int round_div_signed(int value, unsigned divisor)
+{
+    if (divisor == 0) {
+        return value;
+    }
+
+    if (value >= 0) {
+        return (value + (int)(divisor / 2)) / (int)divisor;
+    }
+    return -(((-value) + (int)(divisor / 2)) / (int)divisor);
+}
+
 static void format_aux_value(uint8_t aux_input, uint16_t aux_value,
                              char *out, size_t out_len)
 {
@@ -837,32 +985,53 @@ static void format_aux_value(uint8_t aux_input, uint16_t aux_value,
     }
 
     const uint16_t AUX_NA = 0xFFFF;
+    size_t idx = 0;
+
     switch (aux_input & 0x03u) {
     case 0:
+        idx += append_text(out + idx, out_len - idx, "Aux ");
         if (aux_value == AUX_NA) {
-            snprintf(out, out_len, "Aux N/A");
+            idx += append_text(out + idx, out_len - idx, "N/A");
         } else {
-            snprintf(out, out_len, "Aux %.2f V", aux_value / 100.0f);
+            char number[16] = {0};
+            build_unsigned_fixed(number, sizeof(number), aux_value, 100, 2);
+            idx += append_text(out + idx, out_len - idx, number);
+            idx += append_text(out + idx, out_len - idx, " V");
         }
         break;
     case 1:
+        idx += append_text(out + idx, out_len - idx, "Mid ");
         if (aux_value == AUX_NA) {
-            snprintf(out, out_len, "Mid N/A");
+            idx += append_text(out + idx, out_len - idx, "N/A");
         } else {
-            snprintf(out, out_len, "Mid %.2f V", aux_value / 100.0f);
+            char number[16] = {0};
+            build_unsigned_fixed(number, sizeof(number), aux_value, 100, 2);
+            idx += append_text(out + idx, out_len - idx, number);
+            idx += append_text(out + idx, out_len - idx, " V");
         }
         break;
     case 2:
+        idx += append_text(out + idx, out_len - idx, "Temp ");
         if (aux_value == AUX_NA) {
-            snprintf(out, out_len, "Temp N/A");
+            idx += append_text(out + idx, out_len - idx, "N/A");
         } else {
-            float temp_c = (aux_value / 100.0f) - 273.15f;
-            snprintf(out, out_len, "Temp %.1f C", temp_c);
+            int temp_centi = (int)aux_value - 27315;
+            int temp_tenths = round_div_signed(temp_centi, 10);
+            char number[16] = {0};
+            build_signed_fixed(number, sizeof(number), temp_tenths, 10, 1);
+            idx += append_text(out + idx, out_len - idx, number);
+            idx += append_text(out + idx, out_len - idx, " C");
         }
         break;
     default:
-        snprintf(out, out_len, "None");
+        idx = append_text(out, out_len, "None");
         break;
+    }
+
+    if (idx < out_len) {
+        out[idx] = '\0';
+    } else {
+        out[out_len - 1] = '\0';
     }
 }
 
