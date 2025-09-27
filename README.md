@@ -2,7 +2,7 @@
 
 An ESP32-S3-based solar panel monitor that displays real-time data from a Victron BLE panel using LVGL, and includes a built-in Wi‑Fi AP configuration server to set the AES encryption key via a user-friendly web interface or directly on the device.
 
-**Works with Victron SmartSolar devices that have Bluetooth, including SmartSolar MPPT 75/10, 75/15, 100/15, and 100/20 solar chargers.**
+**Works with Victron SmartSolar chargers and Victron Battery Monitor devices that broadcast Bluetooth telemetry (SmartShunt, BMV series, etc.).**
 
 ---
 ## Screenshots
@@ -37,10 +37,11 @@ Below are screenshots of the device UI, showing both the Live tab and various In
 ## Features
 
 - **BLE Decryption & Display**
-  - Scans Victron BLE advertisements, decrypts them with a user-configurable 128‑bit AES key, and parses output voltage, current, solar input, and yield.
+  - Scans Victron BLE advertisements, decrypts them with a user-configurable 128-bit AES key, and parses Solar Charger (record type 0x01) and Battery Monitor (record type 0x02) payloads including voltage, current, PV yield, state-of-charge, time-to-go, and auxiliary metrics.
   - Displays live data on a 320x480 (rotated) LCD using LVGL (Default Dark-Theme).
   - Shows device state and error codes with icons and text.
   - Displays the MAC address of the currently connected Victron BLE device.
+  - Adapts the UI copy and layout based on the detected device class so charger-only fields stay hidden when a battery monitor is active.
 
 - **On‑Device Configuration**
   - **Web Interface:** Creates a Wi‑Fi SoftAP (`VictronConfig`) on boot. Hosts a web page (SPIFFS) for entering a new AES key.
@@ -50,6 +51,12 @@ Below are screenshots of the device UI, showing both the Live tab and various In
 - **Persistent Storage**
   - AES key, Wi-Fi settings, and display brightness are stored in NVS.
   - Default AES key is used if none is set by the user.
+
+## Latest Release
+
+- **1.1.0** adds full Victron Battery Monitor (record type 0x02) support alongside Solar Charger (record type 0x01) telemetry with automatic UI updates.
+- Download prebuilt artifacts (`bootloader.bin`, `partition-table.bin`, `VictronSolarDisplayEsp.bin`, `spiffs.bin`, `flasher_args.json`, `README.md`) from the GitHub Releases page and flash them with the offsets shown below.
+- Verify Battery Monitor metrics (SOC, TTG, currents) after flashing to confirm your AES key and device pairing.
 
 ---
 
@@ -192,15 +199,24 @@ After saving the key, the device will reboot and begin displaying live data.
 
 ## Victron BLE Manufacturer Data Support (Planned Improvements)
 
-This project currently supports parsing and decrypting Victron BLE advertisements for record type 0x01 (Panel data). The Victron BLE protocol, as described in the official documentation (see [`docs/extra-manufacturer-data-2022-12-14.pdf`](docs/extra-manufacturer-data-2022-12-14.pdf)), defines several record types with different encrypted payloads:
+This project currently supports parsing and decrypting Victron BLE advertisements for record types 0x01 (Solar Charger) and 0x02 (Battery Monitor). The Victron BLE protocol, as described in the official documentation (see [`docs/extra-manufacturer-data-2022-12-14.pdf`](docs/extra-manufacturer-data-2022-12-14.pdf)), defines several record types with different encrypted payloads:
 
-| Record Type | Description         | Encrypted Data Length | Supported in Firmware? |
-|-------------|---------------------|----------------------|------------------------|
-| 0x01        | Panel               | 21                   | Yes                    |
-| 0x02        | BMS                 | 21                   | Planned                |
-| 0x03        | Inverter            | 21                   | Planned                |
-| 0x04        | Charger             | 21                   | Planned                |
-| 0x05        | VE.Direct LoRaWAN   | 13                   | Planned                |
+| Value | Record Type |
+|-------|--------------|
+| 0x00 | Test record |
+| 0x01 | Solar Charger |
+| 0x02 | Battery Monitor |
+| 0x03 | Inverter |
+| 0x04 | DC/DC converter |
+| 0x05 | SmartLithium |
+| 0x06 | Inverter RS |
+| 0x07 | GX-Device (Record layout TBD) |
+| 0x08 | AC Charger (Record layout TBD) |
+| 0x09 | Smart Battery Protect |
+| 0x0A | (Lynx Smart) BMS |
+| 0x0B | Multi RS |
+| 0x0C | VE.Bus |
+| 0x0D | DC Energy Meter |
 
 **Planned future improvements:**
 - Support for parsing and decrypting all Victron BLE record types (BMS, Inverter, Charger, VE.Direct LoRaWAN, etc.)
