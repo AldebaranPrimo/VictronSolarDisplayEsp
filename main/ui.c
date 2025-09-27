@@ -321,12 +321,12 @@ void ui_init(void) {
     lbl_error = lv_label_create(tab_info);
     lv_obj_add_style(lbl_error, &style_title, 0);
     lv_label_set_text(lbl_error, "Err: 0");
-    lv_obj_align(lbl_error, LV_ALIGN_TOP_LEFT, 400, 180);
+    lv_obj_align(lbl_error, LV_ALIGN_TOP_LEFT, 240, 820);
 
     lbl_device_type = lv_label_create(tab_info);
     lv_obj_add_style(lbl_device_type, &style_title, 0);
     lv_label_set_text(lbl_device_type, "Device: --");
-    lv_obj_align(lbl_device_type, LV_ALIGN_TOP_LEFT, 400, 140);
+    lv_obj_align(lbl_device_type, LV_ALIGN_TOP_LEFT, 8, 820);
 
     lv_obj_t *lmac = lv_label_create(tab_info);
     lv_obj_add_style(lmac, &style_title, 0);
