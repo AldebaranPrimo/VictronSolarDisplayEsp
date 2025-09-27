@@ -33,6 +33,14 @@ Below are screenshots of the device UI, showing both the Live tab and various In
   <b>Info Tab – MAC & AES Key:</b> View and edit the AES key and see the current BLE MAC address. Save or reboot from here.
 </p>
 
+-------
+
+<p align="center">
+  <img src="docs/images/battery-monitor-1-1-0.png" alt="V1.1.0 Battery Monitor Ui" width="260" style="margin: 0 12px; display: inline-block;"/>
+  <br/>
+  <b>NEW Battery Monitor Ui</b>
+</p>
+
 ---
 ## Features
 
