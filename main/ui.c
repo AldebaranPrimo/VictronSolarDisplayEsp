@@ -68,7 +68,7 @@ void ui_init(void) {
     );
 #endif
 
-    ui->tabview  = lv_tabview_create(lv_scr_act(), LV_DIR_TOP, 40);
+    ui->tabview  = lv_tabview_create(lv_scr_act(), LV_DIR_TOP, 32);
     ui->tab_live = lv_tabview_add_tab(ui->tabview, "Live");
     ui->tab_info = lv_tabview_add_tab(ui->tabview, "Info");
 
