@@ -16,6 +16,7 @@
 #define WIFI_NAMESPACE "wifi"
 
 static const char *TAG_INFO = "UI_INFO";
+static const char *APP_VERSION = "1.1.0";
 
 static void ta_event_cb(lv_event_t *e);
 static void wifi_event_cb(lv_event_t *e);
@@ -40,6 +41,11 @@ void ui_info_panel_init(ui_state_t *ui,
     if (ui == NULL || ui->tab_info == NULL) {
         return;
     }
+
+    lv_obj_t *lbl_version = lv_label_create(ui->tab_info);
+    lv_obj_add_style(lbl_version, &ui->styles.title, 0);
+    lv_label_set_text_fmt(lbl_version, "Version: %s", APP_VERSION);
+    lv_obj_align(lbl_version, LV_ALIGN_TOP_RIGHT, -8, 15);
 
     lv_obj_t *lbl_ssid = lv_label_create(ui->tab_info);
     lv_obj_add_style(lbl_ssid, &ui->styles.title, 0);
