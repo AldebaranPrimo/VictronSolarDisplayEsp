@@ -152,7 +152,7 @@ curl http://192.168.4.1/screenshot -o framebuffer.raw
 Run the Python script to convert the raw framebuffer to a PNG image:
 
 ```bash
-python convert_screenshot.py framebuffer.raw output.png
+python convert-framebuffer.py framebuffer.raw output.png
 ```
 
 ---
