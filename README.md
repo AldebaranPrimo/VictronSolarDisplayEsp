@@ -95,11 +95,46 @@ VictronSolarDisplayEsp/
    ├─ main.c                # app_main, LVGL init, start services
    ├─ config_server.c       # Wi-Fi AP + HTTP server for config
    ├─ victron_ble.c         # BLE scanning & AES decryption
-   ├─ ui.c                  # LVGL UI definition and callbacks
+   ├─ ui.c                  # Core LVGL wiring + device view orchestration
+   └─ ui/                   # Modular UI components (views, helpers)
+      ├─ view_solar.c       # Solar charger layout & update logic
+      ├─ view_battery.c     # Battery monitor layout & update logic
+      ├─ view_registry.c    # Factory registry for victron_device_type_t
+      ├─ info_panel.c       # Info-tab widgets and event handlers
+      ├─ ui_state.h         # Shared UI state struct
+      └─ ui_format.c        # Common label formatting helpers
    ├─ display.h/.c          # LCD BSP interaction
    ├─ config_storage.c      # NVS read/write for AES key, Wi-Fi, brightness
    └─ ...                   # Other headers & components
 ```
+
+---
+
+## Adding Support for a New Victron Device Type
+
+The UI is now modular: each device view lives in `main/ui/` and is registered by type. To plug in a new Victron payload, follow these steps:
+
+1. **Update BLE Parsing**
+   - Extend `victron_ble.c` to decode the new record type into `victron_data_t`. Add any required structs to `victron_ble.h` and assign a unique `victron_device_type_t` enum value.
+
+2. **Implement the View Module**
+   - Create `main/ui/view_<device>.c` with a `ui_device_view_t` implementation (see `view_solar.c` or `view_battery.c` for patterns).
+     - Build LVGL widgets under the provided parent, using the shared styles in `ui_state_t`.
+     - Implement `update()` to format incoming data, reusing helpers from `ui_format.c` where possible.
+     - Provide `show()`/`hide()` for visibility toggling; `destroy()` only if you allocate additional resources.
+
+3. **Register the View**
+   - Add an entry to `main/ui/view_registry.c` mapping your new `victron_device_type_t` to the module’s factory function and display name.
+   - If the device should appear with a specific label in the Info tab, also update `ui_info_panel_init()` as needed.
+
+4. **Expose Shared State**
+   - If the view requires additional shared UI state, extend `ui_state_t` in `main/ui/ui_state.h` and initialise it in `ui_init()`.
+
+5. **Test End-to-End**
+   - Build (`idf.py build`) and flash the firmware.
+   - Feed BLE payloads from the new device type (or a mock) and confirm the layout updates correctly without regressions for existing devices.
+
+Following this flow keeps `ui.c` untouched and ensures each device type remains self-contained and swappable via the registry.
 
 ---
 
