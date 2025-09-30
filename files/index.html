@@ -98,7 +98,7 @@ function triggerSpiralParticleCollect() {
 }
 
 function triggerExplosion(element) {
-    const particleCount = 50;
+    const particleCount = 25;
     const particlesContainer = document.querySelector('.particles');
     const rect = element.getBoundingClientRect();
     const containerRect = particlesContainer.getBoundingClientRect();
@@ -116,7 +116,7 @@ function triggerExplosion(element) {
         particle.style.setProperty('--endX', endX);
         particle.style.setProperty('--endY', endY);
         particle.style.setProperty('--endZ', endZ);
-        const duration = (Math.random() * 2 + 0.5) + 's';
+        const duration = (Math.random() * 1 + 0.5) + 's';
         particle.style.animationDuration = duration;
         particle.style.animationDelay = '0s';
         particlesContainer.appendChild(particle);
@@ -154,7 +154,7 @@ document.addEventListener("DOMContentLoaded", function() {
 // Trigger explosion at click position anywhere on the page
 document.addEventListener('click', function(e) {
     const particlesContainer = document.querySelector('.particles');
-    const particleCount = 50;
+    const particleCount = 20;
     // Get click position relative to the particles container
     const containerRect = particlesContainer.getBoundingClientRect();
     const centerX = e.clientX - containerRect.left;
@@ -171,11 +171,11 @@ document.addEventListener('click', function(e) {
         particle.style.setProperty('--endX', endX);
         particle.style.setProperty('--endY', endY);
         particle.style.setProperty('--endZ', endZ);
-        const duration = (Math.random() * 2 + 0.5) + 's';
+        const duration = (Math.random() * 1 + 0.5) + 's';
         particle.style.animationDuration = duration;
         particle.style.animationDelay = '0s';
         particlesContainer.appendChild(particle);
-        setTimeout(() => { particle.remove(); }, parseFloat(duration) * 1000);
+        setTimeout(() => { particle.remove(); }, parseFloat(duration) * 500);
     }
 });
   </script>
