@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <stdbool.h>
 #include <inttypes.h>
+#include <string.h>
 #include <lvgl.h>
 #include "display.h"
 #include "esp_bsp.h"
@@ -14,6 +15,9 @@
 #include "config_server.h"
 #include "esp_wifi.h"
 #include <stdio.h>
+#include "ui/ui_state.h"
+#include "ui/device_view.h"
+#include "ui/view_registry.h"
 
 // NVS namespace for Wi-Fi
 #define WIFI_NAMESPACE "wifi"
@@ -24,37 +28,12 @@ LV_FONT_DECLARE(font_awesome_bolt_40);
 
 static const char *TAG_UI = "UI_MODULE";
 
-// LVGL objects & styles
-static lv_obj_t *tabview, *tab_live, *tab_info, *kb;
-static lv_style_t style_title, style_val, style_big, style_medium;
-static lv_obj_t *cont_solar, *cont_battery;
-static lv_obj_t *lbl_battV, *lbl_battA, *lbl_loadA;
-static lv_obj_t *lbl_solar, *lbl_yield, *lbl_state, *lbl_error;
-static lv_obj_t *solar_symbol, *bolt_symbol;
-static lv_obj_t *lbl_load_watt;
-static lv_obj_t *lbl_device_type;
-static lv_obj_t *lbl_bmon_voltage, *lbl_bmon_current, *lbl_bmon_soc;
-static lv_obj_t *lbl_bmon_ttg, *lbl_bmon_consumed, *lbl_bmon_aux;
-static lv_obj_t *ta_mac, *ta_key;
-
-// Global brightness variable
-uint8_t brightness = 100;
-
-// Wi-Fi AP config UI elements
-static lv_obj_t *ta_ssid, *ta_password, *cb_ap_enable;
-
-// --- Screensaver settings state ---
-static lv_obj_t *cb_screensaver, *slider_ss_brightness, *spinbox_ss_time;
-static bool screensaver_enabled;
-static uint8_t screensaver_brightness;
-static uint16_t screensaver_timeout;
-static lv_timer_t *screensaver_timer = NULL;
-static bool screensaver_active = false;
-static victron_device_type_t current_device_type = VICTRON_DEVICE_TYPE_UNKNOWN;
+static ui_state_t g_ui = {
+    .brightness = 100,
+    .current_device_type = VICTRON_DEVICE_TYPE_UNKNOWN,
+};
 
 // Forward declarations
-static const char *err_str(uint8_t e);
-static const char *charger_state_str(uint8_t s);
 static void ta_event_cb(lv_event_t *e);
 static void brightness_slider_event_cb(lv_event_t *e);
 static void wifi_event_cb(lv_event_t *e);
@@ -62,8 +41,8 @@ static void ap_checkbox_event_cb(lv_event_t *e);
 static void save_key_btn_event_cb(lv_event_t *e);
 static void reboot_btn_event_cb(lv_event_t *e);
 static void screensaver_timer_cb(lv_timer_t *timer);
-static void screensaver_enable(bool enable);
-static void screensaver_wake(void);
+static void screensaver_enable(ui_state_t *ui, bool enable);
+static void screensaver_wake(ui_state_t *ui);
 
 // Forward declarations for screensaver UI event callbacks
 static void cb_screensaver_event_cb(lv_event_t *e);
@@ -73,36 +52,35 @@ static void spinbox_ss_time_increment_event_cb(lv_event_t *e);
 static void spinbox_ss_time_decrement_event_cb(lv_event_t *e);
 // Forward declarations (already present, just for clarity)
 static void tabview_touch_event_cb(lv_event_t *e);
-static void ensure_device_layout(victron_device_type_t type);
+static void ensure_device_layout(ui_state_t *ui, victron_device_type_t type);
 static const char *device_type_name(victron_device_type_t type);
-static void format_aux_value(uint8_t aux_input, uint16_t aux_value,
-                             char *out, size_t out_len);
-static void label_set_unsigned_fixed(lv_obj_t *label, unsigned value,
-                                     unsigned scale, uint8_t frac_digits,
-                                     const char *unit);
-static void label_set_signed_fixed(lv_obj_t *label, int value,
-                                   unsigned scale, uint8_t frac_digits,
-                                   const char *unit);
-static int round_div_signed(int value, unsigned divisor);
 
 void ui_init(void) {
-    // Initialize NVS
+    ui_state_t *ui = &g_ui;
+
     nvs_flash_init();
-    load_brightness(&brightness); // use the global variable
-    // Load defaults from storage
+    load_brightness(&ui->brightness);
+
+    ui->active_view = NULL;
+    ui->current_device_type = VICTRON_DEVICE_TYPE_UNKNOWN;
+    for (size_t i = 0; i < UI_MAX_DEVICE_VIEWS; ++i) {
+        ui->views[i] = NULL;
+    }
+
     char default_ssid[33]; size_t ssid_len = sizeof(default_ssid);
     char default_pass[65]; size_t pass_len = sizeof(default_pass);
     uint8_t ap_enabled;
     if (load_wifi_config(default_ssid, &ssid_len, default_pass, &pass_len, &ap_enabled) != ESP_OK) {
         strncpy(default_ssid, "VictronConfig", sizeof(default_ssid));
-        default_ssid[sizeof(default_ssid)-1] = '\0';
+        default_ssid[sizeof(default_ssid) - 1] = '\0';
         default_pass[0] = '\0';
         ap_enabled = 1;
     }
 
-    load_screensaver_settings(&screensaver_enabled, &screensaver_brightness, &screensaver_timeout);
+    load_screensaver_settings(&ui->screensaver.enabled,
+                              &ui->screensaver.brightness,
+                              &ui->screensaver.timeout);
 
-    // Initialize theme
 #if LV_USE_THEME_DEFAULT
     lv_theme_default_init(NULL,
         lv_palette_main(LV_PALETTE_BLUE),
@@ -112,243 +90,116 @@ void ui_init(void) {
     );
 #endif
 
-    // Create tabs
-    tabview  = lv_tabview_create(lv_scr_act(), LV_DIR_TOP, 40);
-    tab_live = lv_tabview_add_tab(tabview, "Live");
-    tab_info = lv_tabview_add_tab(tabview, "Info");
+    ui->tabview  = lv_tabview_create(lv_scr_act(), LV_DIR_TOP, 40);
+    ui->tab_live = lv_tabview_add_tab(ui->tabview, "Live");
+    ui->tab_info = lv_tabview_add_tab(ui->tabview, "Info");
 
-    // Add wake event callbacks to tabs
-    lv_obj_add_event_cb(tab_live, tabview_touch_event_cb, LV_EVENT_PRESSED, NULL);
-    lv_obj_add_event_cb(tab_live, tabview_touch_event_cb, LV_EVENT_CLICKED, NULL);
-    lv_obj_add_event_cb(tab_live, tabview_touch_event_cb, LV_EVENT_GESTURE, NULL);
+    lv_obj_add_event_cb(ui->tab_live, tabview_touch_event_cb, LV_EVENT_PRESSED, ui);
+    lv_obj_add_event_cb(ui->tab_live, tabview_touch_event_cb, LV_EVENT_CLICKED, ui);
+    lv_obj_add_event_cb(ui->tab_live, tabview_touch_event_cb, LV_EVENT_GESTURE, ui);
 
-    lv_obj_add_event_cb(tab_info, tabview_touch_event_cb, LV_EVENT_PRESSED, NULL);
-    lv_obj_add_event_cb(tab_info, tabview_touch_event_cb, LV_EVENT_CLICKED, NULL);
-    lv_obj_add_event_cb(tab_info, tabview_touch_event_cb, LV_EVENT_GESTURE, NULL);
+    lv_obj_add_event_cb(ui->tab_info, tabview_touch_event_cb, LV_EVENT_PRESSED, ui);
+    lv_obj_add_event_cb(ui->tab_info, tabview_touch_event_cb, LV_EVENT_CLICKED, ui);
+    lv_obj_add_event_cb(ui->tab_info, tabview_touch_event_cb, LV_EVENT_GESTURE, ui);
 
-    // Keyboard for textareas
-    kb = lv_keyboard_create(lv_layer_top());
-    lv_obj_set_size(kb, LV_HOR_RES, LV_VER_RES/2);
-    lv_obj_align(kb, LV_ALIGN_BOTTOM_MID, 0, 0);
-    lv_obj_add_flag(kb, LV_OBJ_FLAG_HIDDEN);
-
-    lv_obj_add_flag(kb, LV_OBJ_FLAG_HIDDEN);
+    ui->keyboard = lv_keyboard_create(lv_layer_top());
+    lv_obj_set_size(ui->keyboard, LV_HOR_RES, LV_VER_RES/2);
+    lv_obj_align(ui->keyboard, LV_ALIGN_BOTTOM_MID, 0, 0);
+    lv_obj_add_flag(ui->keyboard, LV_OBJ_FLAG_HIDDEN);
 
     // Styles
-    lv_style_init(&style_title);
-    lv_style_set_text_font(&style_title, &lv_font_montserrat_16);
-    lv_style_set_text_color(&style_title, lv_color_white());
+    lv_style_init(&ui->styles.title);
+    lv_style_set_text_font(&ui->styles.title, &lv_font_montserrat_16);
+    lv_style_set_text_color(&ui->styles.title, lv_color_white());
 
-    lv_style_init(&style_medium);
-    lv_style_set_text_font(&style_medium, &lv_font_montserrat_24);
-    lv_style_set_text_color(&style_medium, lv_color_white());
+    lv_style_init(&ui->styles.medium);
+    lv_style_set_text_font(&ui->styles.medium, &lv_font_montserrat_24);
+    lv_style_set_text_color(&ui->styles.medium, lv_color_white());
 
-    lv_style_init(&style_big);
-    lv_style_set_text_font(&style_big, &lv_font_montserrat_40);
-    lv_style_set_text_color(&style_big, lv_color_white());
+    lv_style_init(&ui->styles.big);
+    lv_style_set_text_font(&ui->styles.big, &lv_font_montserrat_40);
+    lv_style_set_text_color(&ui->styles.big, lv_color_white());
 
-    lv_style_init(&style_val);
+    lv_style_init(&ui->styles.value);
 #if LV_FONT_MONTSERRAT_30
-    lv_style_set_text_font(&style_val, &lv_font_montserrat_30);
+    lv_style_set_text_font(&ui->styles.value, &lv_font_montserrat_30);
 #else
-    lv_style_set_text_font(&style_val, LV_FONT_DEFAULT);
+    lv_style_set_text_font(&ui->styles.value, LV_FONT_DEFAULT);
 #endif
-    lv_style_set_text_color(&style_val, lv_color_white());
+    lv_style_set_text_color(&ui->styles.value, lv_color_white());
 
-    // Live tab layout (solar view)
-    cont_solar = lv_obj_create(tab_live);
-    lv_obj_set_size(cont_solar, lv_pct(100), lv_pct(100));
-    lv_obj_set_style_bg_opa(cont_solar, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_border_width(cont_solar, 0, 0);
-    lv_obj_set_style_outline_width(cont_solar, 0, 0);
-    lv_obj_set_style_pad_all(cont_solar, 0, 0);
-    lv_obj_clear_flag(cont_solar, LV_OBJ_FLAG_SCROLLABLE);
-
-    lv_obj_t *row = lv_obj_create(cont_solar);
-    lv_obj_set_size(row, lv_pct(100), 100);
-    lv_obj_set_flex_flow(row, LV_STYLE_PAD_ROW);
-    lv_obj_set_flex_align(row, LV_FLEX_ALIGN_SPACE_EVENLY,
-                           LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    lv_obj_clear_flag(row, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_set_style_bg_color(row, lv_color_hex(0x223355), 0);
-    lv_obj_set_style_border_width(row, 0, 0);
-    lv_obj_set_style_outline_width(row, 0, 0);
-
-
-    #define NEW_BOX(parent, name, txt, ptr, value_style) do { \
-        lv_obj_t *b = lv_obj_create(parent); \
-        lv_obj_set_size(b, lv_pct(30), 80); \
-        lv_obj_set_style_pad_all(b, 8, 0); \
-        lv_obj_set_style_bg_opa(b, LV_OPA_TRANSP, 0); \
-        lv_obj_set_style_border_width(b, 0, 0); \
-        lv_obj_set_style_outline_width(b, 0, 0); \
-        lv_obj_t *h = lv_label_create(b); \
-        lv_label_set_text(h, name); \
-        lv_obj_add_style(h, &style_title, 0); \
-        lv_obj_align(h, LV_ALIGN_TOP_MID, 0, 0); \
-        *(ptr) = lv_label_create(b); \
-        lv_label_set_text(*(ptr), txt); \
-        if (value_style != NULL) { \
-            lv_obj_add_style(*(ptr), value_style, 0); \
-        } \
-        lv_obj_align(*(ptr), LV_ALIGN_CENTER, 0, 10); \
-    } while(0)
-
-    NEW_BOX(row, "Batt V", "0.00 V", &lbl_battV, &style_val);
-    NEW_BOX(row, "Batt A", "0.0 A",  &lbl_battA, &style_val);
-    NEW_BOX(row, "Load A", "0.0 A", &lbl_loadA, &style_val);
-
-    lbl_state = lv_label_create(cont_solar);
-    lv_obj_add_style(lbl_state, &style_big, 0);
-    lv_label_set_text(lbl_state, "State");
-    lv_obj_align(lbl_state, LV_ALIGN_CENTER, 0, 50);
-
-    // Icons and labels
-    solar_symbol = lv_label_create(cont_solar);
-    lv_obj_set_style_text_font(solar_symbol, &font_awesome_solar_panel_40, 0);
-    lv_label_set_text(solar_symbol, "\xEF\x96\xBA");
-    lv_obj_align(solar_symbol, LV_ALIGN_BOTTOM_LEFT, 25, -55);
-
-    bolt_symbol = lv_label_create(cont_solar);
-    lv_obj_set_style_text_font(bolt_symbol, &font_awesome_bolt_40, 0);
-    lv_label_set_text(bolt_symbol, "\xEF\x83\xA7");
-    lv_obj_align(bolt_symbol, LV_ALIGN_BOTTOM_RIGHT, -28, -55);
-
-    lbl_solar = lv_label_create(cont_solar);
-    lv_obj_add_style(lbl_solar, &style_title, 0);
-    lv_label_set_text(lbl_solar, "");
-    lv_obj_align(lbl_solar, LV_ALIGN_BOTTOM_LEFT, 32, -8);
-
-    lbl_yield = lv_label_create(cont_solar);
-    lv_obj_add_style(lbl_yield, &style_title, 0);
-    lv_label_set_text(lbl_yield, "");
-    lv_obj_align(lbl_yield, LV_ALIGN_BOTTOM_MID, 0, -8);
-
-    lbl_load_watt = lv_label_create(cont_solar);
-    lv_obj_add_style(lbl_load_watt, &style_title, 0);
-    lv_label_set_text(lbl_load_watt, "");
-    lv_obj_align(lbl_load_watt, LV_ALIGN_BOTTOM_RIGHT, -31, -8);
-
-    // Live tab layout (battery monitor view, hidden by default)
-    cont_battery = lv_obj_create(tab_live);
-    lv_obj_set_size(cont_battery, lv_pct(100), lv_pct(100));
-    lv_obj_set_style_bg_opa(cont_battery, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_border_width(cont_battery, 0, 0);
-    lv_obj_set_style_outline_width(cont_battery, 0, 0);
-    lv_obj_set_style_pad_all(cont_battery, 12, 0);
-    lv_obj_clear_flag(cont_battery, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_set_flex_flow(cont_battery, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_style_pad_row(cont_battery, 18, 0);
-    lv_obj_add_flag(cont_battery, LV_OBJ_FLAG_HIDDEN);
-
-    lv_obj_t *bat_row1 = lv_obj_create(cont_battery);
-    lv_obj_set_size(bat_row1, lv_pct(100), 110);
-    lv_obj_set_flex_flow(bat_row1, LV_STYLE_PAD_ROW);
-    lv_obj_set_flex_align(bat_row1, LV_FLEX_ALIGN_SPACE_EVENLY,
-                          LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    lv_obj_clear_flag(bat_row1, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_set_style_bg_color(bat_row1, lv_color_hex(0x223355), 0);
-    lv_obj_set_style_border_width(bat_row1, 0, 0);
-    lv_obj_set_style_outline_width(bat_row1, 0, 0);
-    lv_obj_set_style_pad_all(bat_row1, 12, 0);
-    lv_obj_set_style_pad_column(bat_row1, 16, 0);
-
-    NEW_BOX(bat_row1, "Batt V", "0.00 V", &lbl_bmon_voltage, &style_medium);
-    NEW_BOX(bat_row1, "Current", "0.00 A", &lbl_bmon_current, &style_medium);
-    NEW_BOX(bat_row1, "SOC", "0.0 %", &lbl_bmon_soc, &style_medium);
-
-    lv_obj_t *bat_row2 = lv_obj_create(cont_battery);
-    lv_obj_set_size(bat_row2, lv_pct(100), 110);
-    lv_obj_set_flex_flow(bat_row2, LV_STYLE_PAD_ROW);
-    lv_obj_set_flex_align(bat_row2, LV_FLEX_ALIGN_SPACE_EVENLY,
-                          LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    lv_obj_clear_flag(bat_row2, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_set_style_bg_color(bat_row2, lv_color_hex(0x223355), 0);
-    lv_obj_set_style_border_width(bat_row2, 0, 0);
-    lv_obj_set_style_outline_width(bat_row2, 0, 0);
-    lv_obj_set_style_pad_all(bat_row2, 12, 0);
-    lv_obj_set_style_pad_column(bat_row2, 16, 0);
-
-    NEW_BOX(bat_row2, "TTG", "0h 00m", &lbl_bmon_ttg, &style_medium);
-    NEW_BOX(bat_row2, "Consumed", "0.0 Ah", &lbl_bmon_consumed, &style_medium);
-    NEW_BOX(bat_row2, "Aux", "N/A", &lbl_bmon_aux, &style_medium);
-
-    #undef NEW_BOX
-
-    // Wi-Fi SSID
-    lv_obj_t *lbl_ssid = lv_label_create(tab_info);
-    lv_obj_add_style(lbl_ssid, &style_title, 0);
+    lv_obj_t *lbl_ssid = lv_label_create(ui->tab_info);
+    lv_obj_add_style(lbl_ssid, &ui->styles.title, 0);
     lv_label_set_text(lbl_ssid, "AP SSID:");
     lv_obj_align(lbl_ssid, LV_ALIGN_TOP_LEFT, 8, 15);
 
-    ta_ssid = lv_textarea_create(tab_info);
-    lv_textarea_set_one_line(ta_ssid, true);
-    lv_obj_set_width(ta_ssid, lv_pct(80));
-    lv_textarea_set_text(ta_ssid, default_ssid);
-    lv_obj_align(ta_ssid, LV_ALIGN_TOP_LEFT, 8, 45);
-    lv_obj_add_event_cb(ta_ssid, ta_event_cb, LV_EVENT_FOCUSED, NULL);
-    lv_obj_add_event_cb(ta_ssid, ta_event_cb, LV_EVENT_DEFOCUSED, NULL);
-    lv_obj_add_event_cb(ta_ssid, ta_event_cb, LV_EVENT_CANCEL, NULL);
-    lv_obj_add_event_cb(ta_ssid, ta_event_cb, LV_EVENT_READY, NULL);
-    lv_obj_add_event_cb(ta_ssid, wifi_event_cb, LV_EVENT_VALUE_CHANGED, NULL);
+    ui->wifi.ssid = lv_textarea_create(ui->tab_info);
+    lv_textarea_set_one_line(ui->wifi.ssid, true);
+    lv_obj_set_width(ui->wifi.ssid, lv_pct(80));
+    lv_textarea_set_text(ui->wifi.ssid, default_ssid);
+    lv_obj_align(ui->wifi.ssid, LV_ALIGN_TOP_LEFT, 8, 45);
+    lv_obj_add_event_cb(ui->wifi.ssid, ta_event_cb, LV_EVENT_FOCUSED, ui);
+    lv_obj_add_event_cb(ui->wifi.ssid, ta_event_cb, LV_EVENT_DEFOCUSED, ui);
+    lv_obj_add_event_cb(ui->wifi.ssid, ta_event_cb, LV_EVENT_CANCEL, ui);
+    lv_obj_add_event_cb(ui->wifi.ssid, ta_event_cb, LV_EVENT_READY, ui);
+    lv_obj_add_event_cb(ui->wifi.ssid, wifi_event_cb, LV_EVENT_VALUE_CHANGED, ui);
 
-    // Wi-Fi Password
-    lv_obj_t *lbl_pass = lv_label_create(tab_info);
-    lv_obj_add_style(lbl_pass, &style_title, 0);
+    lv_obj_t *lbl_pass = lv_label_create(ui->tab_info);
+    lv_obj_add_style(lbl_pass, &ui->styles.title, 0);
     lv_label_set_text(lbl_pass, "AP Password:");
     lv_obj_align(lbl_pass, LV_ALIGN_TOP_LEFT, 8, 90);
 
-    ta_password = lv_textarea_create(tab_info);
-    lv_textarea_set_password_mode(ta_password, true);
-    lv_textarea_set_one_line(ta_password, true);
-    lv_obj_set_width(ta_password, lv_pct(80));
-    lv_textarea_set_text(ta_password, default_pass);
-    lv_obj_align(ta_password, LV_ALIGN_TOP_LEFT, 8, 120);
-    lv_obj_add_event_cb(ta_password, ta_event_cb, LV_EVENT_FOCUSED, NULL);
-    lv_obj_add_event_cb(ta_password, ta_event_cb, LV_EVENT_DEFOCUSED, NULL);
-    lv_obj_add_event_cb(ta_password, ta_event_cb, LV_EVENT_CANCEL, NULL);
-    lv_obj_add_event_cb(ta_password, ta_event_cb, LV_EVENT_READY, NULL);
-    lv_obj_add_event_cb(ta_password, wifi_event_cb, LV_EVENT_VALUE_CHANGED, NULL);
+    ui->wifi.password = lv_textarea_create(ui->tab_info);
+    lv_textarea_set_password_mode(ui->wifi.password, true);
+    lv_textarea_set_one_line(ui->wifi.password, true);
+    lv_obj_set_width(ui->wifi.password, lv_pct(80));
+    lv_textarea_set_text(ui->wifi.password, default_pass);
+    lv_obj_align(ui->wifi.password, LV_ALIGN_TOP_LEFT, 8, 120);
+    lv_obj_add_event_cb(ui->wifi.password, ta_event_cb, LV_EVENT_FOCUSED, ui);
+    lv_obj_add_event_cb(ui->wifi.password, ta_event_cb, LV_EVENT_DEFOCUSED, ui);
+    lv_obj_add_event_cb(ui->wifi.password, ta_event_cb, LV_EVENT_CANCEL, ui);
+    lv_obj_add_event_cb(ui->wifi.password, ta_event_cb, LV_EVENT_READY, ui);
+    lv_obj_add_event_cb(ui->wifi.password, wifi_event_cb, LV_EVENT_VALUE_CHANGED, ui);
 
-    // Enable AP checkbox
-    cb_ap_enable = lv_checkbox_create(tab_info);
-    lv_checkbox_set_text(cb_ap_enable, "Enable AP");
-    lv_obj_add_style(cb_ap_enable, &style_medium,0);
-    if (ap_enabled) lv_obj_add_state(cb_ap_enable, LV_STATE_CHECKED);
-    lv_obj_align(cb_ap_enable, LV_ALIGN_TOP_LEFT, 8, 180);
+    ui->wifi.ap_enable = lv_checkbox_create(ui->tab_info);
+    lv_checkbox_set_text(ui->wifi.ap_enable, "Enable AP");
+    lv_obj_add_style(ui->wifi.ap_enable, &ui->styles.medium, 0);
+    if (ap_enabled) {
+        lv_obj_add_state(ui->wifi.ap_enable, LV_STATE_CHECKED);
+    }
+    lv_obj_align(ui->wifi.ap_enable, LV_ALIGN_TOP_LEFT, 8, 180);
+    lv_obj_add_event_cb(ui->wifi.ap_enable, ap_checkbox_event_cb, LV_EVENT_VALUE_CHANGED, ui);
 
-    // Info tab: error, MAC, AES Key
-    lbl_error = lv_label_create(tab_info);
-    lv_obj_add_style(lbl_error, &style_title, 0);
-    lv_label_set_text(lbl_error, "Err: 0");
-    lv_obj_align(lbl_error, LV_ALIGN_TOP_LEFT, 240, 820);
+    ui->lbl_error = lv_label_create(ui->tab_info);
+    lv_obj_add_style(ui->lbl_error, &ui->styles.title, 0);
+    lv_label_set_text(ui->lbl_error, "Err: 0");
+    lv_obj_align(ui->lbl_error, LV_ALIGN_TOP_LEFT, 240, 820);
 
-    lbl_device_type = lv_label_create(tab_info);
-    lv_obj_add_style(lbl_device_type, &style_title, 0);
-    lv_label_set_text(lbl_device_type, "Device: --");
-    lv_obj_align(lbl_device_type, LV_ALIGN_TOP_LEFT, 8, 820);
+    ui->lbl_device_type = lv_label_create(ui->tab_info);
+    lv_obj_add_style(ui->lbl_device_type, &ui->styles.title, 0);
+    lv_label_set_text(ui->lbl_device_type, "Device: --");
+    lv_obj_align(ui->lbl_device_type, LV_ALIGN_TOP_LEFT, 8, 820);
 
-    lv_obj_t *lmac = lv_label_create(tab_info);
-    lv_obj_add_style(lmac, &style_title, 0);
+    lv_obj_t *lmac = lv_label_create(ui->tab_info);
+    lv_obj_add_style(lmac, &ui->styles.title, 0);
     lv_label_set_text(lmac, "MAC Address:");
     lv_obj_align(lmac, LV_ALIGN_TOP_LEFT, 8, 250);
 
-    ta_mac = lv_textarea_create(tab_info);
-    lv_textarea_set_one_line(ta_mac, true);
-    lv_obj_set_width(ta_mac, lv_pct(80));
-    lv_textarea_set_text(ta_mac, "00:00:00:00:00:00");
-    lv_obj_align(ta_mac, LV_ALIGN_TOP_LEFT, 8, 280);
-    lv_obj_add_event_cb(ta_mac, ta_event_cb, LV_EVENT_FOCUSED, NULL);
-    lv_obj_add_event_cb(ta_mac, ta_event_cb, LV_EVENT_DEFOCUSED, NULL);
-    lv_obj_add_event_cb(ta_mac, ta_event_cb, LV_EVENT_CANCEL, NULL);
-    lv_obj_add_event_cb(ta_mac, ta_event_cb, LV_EVENT_READY, NULL);
+    ui->ta_mac = lv_textarea_create(ui->tab_info);
+    lv_textarea_set_one_line(ui->ta_mac, true);
+    lv_obj_set_width(ui->ta_mac, lv_pct(80));
+    lv_textarea_set_text(ui->ta_mac, "00:00:00:00:00:00");
+    lv_obj_align(ui->ta_mac, LV_ALIGN_TOP_LEFT, 8, 280);
+    lv_obj_add_event_cb(ui->ta_mac, ta_event_cb, LV_EVENT_FOCUSED, ui);
+    lv_obj_add_event_cb(ui->ta_mac, ta_event_cb, LV_EVENT_DEFOCUSED, ui);
+    lv_obj_add_event_cb(ui->ta_mac, ta_event_cb, LV_EVENT_CANCEL, ui);
+    lv_obj_add_event_cb(ui->ta_mac, ta_event_cb, LV_EVENT_READY, ui);
 
-    lv_obj_t *lkey = lv_label_create(tab_info);
-    lv_obj_add_style(lkey, &style_title, 0);
+    lv_obj_t *lkey = lv_label_create(ui->tab_info);
+    lv_obj_add_style(lkey, &ui->styles.title, 0);
     lv_label_set_text(lkey, "AES Key:");
     lv_obj_align(lkey, LV_ALIGN_TOP_LEFT, 8, 320);
 
-    // --- Set AES key text area from NVS ---
     uint8_t aes_key_bin[16] = {0};
     char aes_key_hex[33] = {0};
     if (load_aes_key(aes_key_bin) == ESP_OK) {
@@ -359,127 +210,117 @@ void ui_init(void) {
         strcpy(aes_key_hex, "00000000000000000000000000000000");
     }
 
-    ta_key = lv_textarea_create(tab_info);
-    lv_textarea_set_one_line(ta_key, true);
-    lv_obj_set_width(ta_key, lv_pct(80));
-    lv_textarea_set_text(ta_key, aes_key_hex);
-    lv_obj_align(ta_key, LV_ALIGN_TOP_LEFT, 8, 350);
-    lv_obj_add_event_cb(ta_key, ta_event_cb, LV_EVENT_FOCUSED, NULL);
-    lv_obj_add_event_cb(ta_key, ta_event_cb, LV_EVENT_DEFOCUSED, NULL);
-    lv_obj_add_event_cb(ta_key, ta_event_cb, LV_EVENT_CANCEL, NULL);
-    lv_obj_add_event_cb(ta_key, ta_event_cb, LV_EVENT_READY, NULL);
+    ui->ta_key = lv_textarea_create(ui->tab_info);
+    lv_textarea_set_one_line(ui->ta_key, true);
+    lv_obj_set_width(ui->ta_key, lv_pct(80));
+    lv_textarea_set_text(ui->ta_key, aes_key_hex);
+    lv_obj_align(ui->ta_key, LV_ALIGN_TOP_LEFT, 8, 350);
+    lv_obj_add_event_cb(ui->ta_key, ta_event_cb, LV_EVENT_FOCUSED, ui);
+    lv_obj_add_event_cb(ui->ta_key, ta_event_cb, LV_EVENT_DEFOCUSED, ui);
+    lv_obj_add_event_cb(ui->ta_key, ta_event_cb, LV_EVENT_CANCEL, ui);
+    lv_obj_add_event_cb(ui->ta_key, ta_event_cb, LV_EVENT_READY, ui);
 
-    // --- Add Save button for AES Key ---
-    lv_obj_t *btn_save_key = lv_btn_create(tab_info);
-    lv_obj_align(btn_save_key, LV_ALIGN_TOP_LEFT, 8, 400); // moved down by 50px
+    lv_obj_t *btn_save_key = lv_btn_create(ui->tab_info);
+    lv_obj_align(btn_save_key, LV_ALIGN_TOP_LEFT, 8, 400);
     lv_obj_set_width(btn_save_key, lv_pct(18));
     lv_obj_t *lbl_btn = lv_label_create(btn_save_key);
     lv_label_set_text(lbl_btn, "Save");
     lv_obj_center(lbl_btn);
-    lv_obj_add_event_cb(btn_save_key, save_key_btn_event_cb, LV_EVENT_CLICKED, NULL);
+    lv_obj_add_event_cb(btn_save_key, save_key_btn_event_cb, LV_EVENT_CLICKED, ui);
 
-    // --- Add Reboot button next to Save ---
-    lv_obj_t *btn_reboot = lv_btn_create(tab_info);
-    lv_obj_align(btn_reboot, LV_ALIGN_TOP_LEFT, 8 + lv_pct(20), 400); // right of Save
+    lv_obj_t *btn_reboot = lv_btn_create(ui->tab_info);
+    lv_obj_align(btn_reboot, LV_ALIGN_TOP_LEFT, 8 + lv_pct(20), 400);
     lv_obj_set_width(btn_reboot, lv_pct(18));
     lv_obj_t *lbl_reboot = lv_label_create(btn_reboot);
     lv_label_set_text(lbl_reboot, "Reboot");
     lv_obj_center(lbl_reboot);
-    lv_obj_add_event_cb(btn_reboot, reboot_btn_event_cb, LV_EVENT_CLICKED, NULL);
+    lv_obj_add_event_cb(btn_reboot, reboot_btn_event_cb, LV_EVENT_CLICKED, ui);
 
-    // Brightness slider label
-    lv_obj_t *lbl_brightness = lv_label_create(tab_info);
-    lv_obj_add_style(lbl_brightness, &style_title, 0);
+    lv_obj_t *lbl_brightness = lv_label_create(ui->tab_info);
+    lv_obj_add_style(lbl_brightness, &ui->styles.title, 0);
     lv_label_set_text(lbl_brightness, "Brightness:");
-    lv_obj_align(lbl_brightness, LV_ALIGN_TOP_LEFT, 8, 450); // moved down by 50px
+    lv_obj_align(lbl_brightness, LV_ALIGN_TOP_LEFT, 8, 450);
 
-    // Brightness slider
-    lv_obj_t *slider = lv_slider_create(tab_info);
+    lv_obj_t *slider = lv_slider_create(ui->tab_info);
     lv_obj_set_width(slider, lv_pct(80));
-    lv_obj_align(slider, LV_ALIGN_TOP_LEFT, 8, 500); // moved down by 50px
+    lv_obj_align(slider, LV_ALIGN_TOP_LEFT, 8, 500);
     lv_slider_set_range(slider, 1, 100);
-    lv_slider_set_value(slider, brightness, LV_ANIM_OFF); // set loaded value
-    bsp_display_brightness_set(brightness); // set display brightness
-    lv_obj_add_event_cb(slider, brightness_slider_event_cb, LV_EVENT_VALUE_CHANGED, NULL);
-    lv_obj_add_style(slider,&style_medium,0);
-    // Add extra space at the bottom
-    lv_obj_t *spacer = lv_obj_create(tab_info);
+    lv_slider_set_value(slider, ui->brightness, LV_ANIM_OFF);
+    bsp_display_brightness_set(ui->brightness);
+    lv_obj_add_event_cb(slider, brightness_slider_event_cb, LV_EVENT_VALUE_CHANGED, ui);
+    lv_obj_add_style(slider, &ui->styles.medium, 0);
+
+    lv_obj_t *spacer = lv_obj_create(ui->tab_info);
     lv_obj_set_size(spacer, 10, 40);
-    lv_obj_align(spacer, LV_ALIGN_TOP_LEFT, 8, 550); // moved down by 50px
+    lv_obj_align(spacer, LV_ALIGN_TOP_LEFT, 8, 550);
     lv_obj_add_flag(spacer, LV_OBJ_FLAG_HIDDEN | LV_OBJ_FLAG_EVENT_BUBBLE);
 
-    lv_obj_add_event_cb(cb_ap_enable, ap_checkbox_event_cb, LV_EVENT_VALUE_CHANGED, NULL);
+    ui->screensaver.checkbox = lv_checkbox_create(ui->tab_info);
+    lv_checkbox_set_text(ui->screensaver.checkbox, "Enable Screensaver");
+    if (ui->screensaver.enabled) {
+        lv_obj_add_state(ui->screensaver.checkbox, LV_STATE_CHECKED);
+    }
+    lv_obj_align(ui->screensaver.checkbox, LV_ALIGN_TOP_LEFT, 8, 600);
+    lv_obj_add_event_cb(ui->screensaver.checkbox, cb_screensaver_event_cb, LV_EVENT_VALUE_CHANGED, ui);
+    lv_obj_add_style(ui->screensaver.checkbox, &ui->styles.medium, 0);
 
-    // Screensaver Enable Checkbox
-    cb_screensaver = lv_checkbox_create(tab_info);
-    lv_checkbox_set_text(cb_screensaver, "Enable Screensaver");
-    if (screensaver_enabled) lv_obj_add_state(cb_screensaver, LV_STATE_CHECKED); // reflect default
-    lv_obj_align(cb_screensaver, LV_ALIGN_TOP_LEFT, 8, 600);
-    lv_obj_add_event_cb(cb_screensaver, cb_screensaver_event_cb, LV_EVENT_VALUE_CHANGED, NULL);
-    lv_obj_add_style(cb_screensaver, &style_medium,0);
-
-    // Screensaver Brightness Slider
-    lv_obj_t *lbl_ss_brightness = lv_label_create(tab_info);
-    lv_obj_add_style(lbl_ss_brightness, &style_title, 0);
+    lv_obj_t *lbl_ss_brightness = lv_label_create(ui->tab_info);
+    lv_obj_add_style(lbl_ss_brightness, &ui->styles.title, 0);
     lv_label_set_text(lbl_ss_brightness, "Screensaver Brightness:");
     lv_obj_align(lbl_ss_brightness, LV_ALIGN_TOP_LEFT, 8, 650);
-    
-    slider_ss_brightness = lv_slider_create(tab_info);
-    lv_obj_set_width(slider_ss_brightness, lv_pct(80));
-    lv_obj_align(slider_ss_brightness, LV_ALIGN_TOP_LEFT, 8, 680);
-    lv_slider_set_range(slider_ss_brightness, 1, 100);
-    lv_slider_set_value(slider_ss_brightness, screensaver_brightness, LV_ANIM_OFF);
-    lv_obj_add_event_cb(slider_ss_brightness, slider_ss_brightness_event_cb, LV_EVENT_VALUE_CHANGED, NULL);
-    lv_obj_add_style(slider_ss_brightness,&style_medium,0);
 
-    // Screensaver Timeout Spinbox
-    lv_obj_t *lbl_ss_time = lv_label_create(tab_info);
-    lv_obj_add_style(lbl_ss_time, &style_title, 0);
+    ui->screensaver.slider_brightness = lv_slider_create(ui->tab_info);
+    lv_obj_set_width(ui->screensaver.slider_brightness, lv_pct(80));
+    lv_obj_align(ui->screensaver.slider_brightness, LV_ALIGN_TOP_LEFT, 8, 680);
+    lv_slider_set_range(ui->screensaver.slider_brightness, 1, 100);
+    lv_slider_set_value(ui->screensaver.slider_brightness, ui->screensaver.brightness, LV_ANIM_OFF);
+    lv_obj_add_event_cb(ui->screensaver.slider_brightness, slider_ss_brightness_event_cb, LV_EVENT_VALUE_CHANGED, ui);
+    lv_obj_add_style(ui->screensaver.slider_brightness, &ui->styles.medium, 0);
+
+    lv_obj_t *lbl_ss_time = lv_label_create(ui->tab_info);
+    lv_obj_add_style(lbl_ss_time, &ui->styles.title, 0);
     lv_label_set_text(lbl_ss_time, "Screensaver Timeout (s):");
     lv_obj_align(lbl_ss_time, LV_ALIGN_TOP_LEFT, 8, 730);
 
-    spinbox_ss_time = lv_spinbox_create(tab_info);
-    lv_spinbox_set_range(spinbox_ss_time, 5, 3600);
-    lv_spinbox_set_value(spinbox_ss_time, screensaver_timeout);
-    lv_spinbox_set_digit_format(spinbox_ss_time, 4, 0);
-    lv_obj_set_width(spinbox_ss_time, 100);
-    lv_obj_align(spinbox_ss_time, LV_ALIGN_TOP_LEFT, 8 + 40, 760);
-    lv_obj_add_event_cb(spinbox_ss_time, spinbox_ss_time_event_cb, LV_EVENT_VALUE_CHANGED, NULL);
+    ui->screensaver.spinbox_timeout = lv_spinbox_create(ui->tab_info);
+    lv_spinbox_set_range(ui->screensaver.spinbox_timeout, 5, 3600);
+    lv_spinbox_set_value(ui->screensaver.spinbox_timeout, ui->screensaver.timeout);
+    lv_spinbox_set_digit_format(ui->screensaver.spinbox_timeout, 4, 0);
+    lv_obj_set_width(ui->screensaver.spinbox_timeout, 100);
+    lv_obj_align(ui->screensaver.spinbox_timeout, LV_ALIGN_TOP_LEFT, 8 + 40, 760);
+    lv_obj_add_event_cb(ui->screensaver.spinbox_timeout, spinbox_ss_time_event_cb, LV_EVENT_VALUE_CHANGED, ui);
 
-    // Add increment and decrement buttons for the spinbox
-    lv_coord_t h = lv_obj_get_height(spinbox_ss_time);
+    lv_coord_t h = lv_obj_get_height(ui->screensaver.spinbox_timeout);
 
-    // Decrement button
-    lv_obj_t *btn_dec = lv_btn_create(tab_info);
+    lv_obj_t *btn_dec = lv_btn_create(ui->tab_info);
     lv_obj_set_size(btn_dec, h, h);
-    lv_obj_align_to(btn_dec, spinbox_ss_time, LV_ALIGN_OUT_LEFT_MID, -5, 0);
+    lv_obj_align_to(btn_dec, ui->screensaver.spinbox_timeout, LV_ALIGN_OUT_LEFT_MID, -5, 0);
     lv_obj_set_style_bg_img_src(btn_dec, LV_SYMBOL_MINUS, 0);
-    lv_obj_add_event_cb(btn_dec, spinbox_ss_time_decrement_event_cb, LV_EVENT_ALL, NULL);
+    lv_obj_add_event_cb(btn_dec, spinbox_ss_time_decrement_event_cb, LV_EVENT_ALL, ui);
 
-    // Increment button
-    lv_obj_t *btn_inc = lv_btn_create(tab_info);
+    lv_obj_t *btn_inc = lv_btn_create(ui->tab_info);
     lv_obj_set_size(btn_inc, h, h);
-    lv_obj_align_to(btn_inc, spinbox_ss_time, LV_ALIGN_OUT_RIGHT_MID, 5, 0);
+    lv_obj_align_to(btn_inc, ui->screensaver.spinbox_timeout, LV_ALIGN_OUT_RIGHT_MID, 5, 0);
     lv_obj_set_style_bg_img_src(btn_inc, LV_SYMBOL_PLUS, 0);
-    lv_obj_add_event_cb(btn_inc, spinbox_ss_time_increment_event_cb, LV_EVENT_ALL, NULL);
+    lv_obj_add_event_cb(btn_inc, spinbox_ss_time_increment_event_cb, LV_EVENT_ALL, ui);
 
-    // Screensaver timer setup
-    screensaver_timer = lv_timer_create(screensaver_timer_cb, screensaver_timeout * 1000, NULL);
-    if (screensaver_enabled) {
-        lv_timer_reset(screensaver_timer);
-        lv_timer_resume(screensaver_timer);
+    ui->screensaver.timer = lv_timer_create(screensaver_timer_cb,
+                                            ui->screensaver.timeout * 1000,
+                                            ui);
+    if (ui->screensaver.enabled) {
+        lv_timer_reset(ui->screensaver.timer);
+        lv_timer_resume(ui->screensaver.timer);
     } else {
-        lv_timer_pause(screensaver_timer); // Start paused if not enabled
+        lv_timer_pause(ui->screensaver.timer);
     }
 
-    // Touch event: wake/reset screensaver timer
-    lv_obj_add_event_cb(lv_scr_act(), tabview_touch_event_cb, LV_EVENT_PRESSED, NULL);
-    lv_obj_add_event_cb(lv_scr_act(), tabview_touch_event_cb, LV_EVENT_CLICKED, NULL);
-    lv_obj_add_event_cb(lv_scr_act(), tabview_touch_event_cb, LV_EVENT_GESTURE, NULL);
+    lv_obj_add_event_cb(lv_scr_act(), tabview_touch_event_cb, LV_EVENT_PRESSED, ui);
+    lv_obj_add_event_cb(lv_scr_act(), tabview_touch_event_cb, LV_EVENT_CLICKED, ui);
+    lv_obj_add_event_cb(lv_scr_act(), tabview_touch_event_cb, LV_EVENT_GESTURE, ui);
 
-    lv_obj_add_event_cb(tabview, tabview_touch_event_cb, LV_EVENT_PRESSED, NULL);
-    lv_obj_add_event_cb(tabview, tabview_touch_event_cb, LV_EVENT_CLICKED, NULL);
-    lv_obj_add_event_cb(tabview, tabview_touch_event_cb, LV_EVENT_GESTURE, NULL);
+    lv_obj_add_event_cb(ui->tabview, tabview_touch_event_cb, LV_EVENT_PRESSED, ui);
+    lv_obj_add_event_cb(ui->tabview, tabview_touch_event_cb, LV_EVENT_CLICKED, ui);
+    lv_obj_add_event_cb(ui->tabview, tabview_touch_event_cb, LV_EVENT_GESTURE, ui);
 
     lvgl_port_unlock();
 }
@@ -489,172 +330,73 @@ void ui_on_panel_data(const victron_data_t *d) {
         return;
     }
 
+    ui_state_t *ui = &g_ui;
+
     lvgl_port_lock(0);
 
     const char *type_str = device_type_name(d->type);
-    if (lbl_device_type) {
-        lv_label_set_text_fmt(lbl_device_type, "Device: %s", type_str);
+    if (ui->lbl_device_type) {
+        lv_label_set_text_fmt(ui->lbl_device_type, "Device: %s", type_str);
     }
 
-    ensure_device_layout(d->type);
+    ensure_device_layout(ui, d->type);
 
-    switch (d->type) {
-    case VICTRON_DEVICE_TYPE_SOLAR_CHARGER: {
-        const victron_solar_data_t *s = &d->payload.solar;
-
-        int battVraw = s->battery_voltage_centi;
-        int battV_i  = battVraw / 100;
-        int battV_f  = abs(battVraw % 100);
-
-        int battAraw = s->battery_current_deci;
-        int battA_i  = battAraw / 10;
-        int battA_f  = abs(battAraw % 10);
-
-        int loadRaw = s->load_current_deci;
-        int load_i = loadRaw / 10;
-        int load_f = abs(loadRaw % 10);
-
-        uint32_t solarW   = s->input_power_w;
-        uint32_t yieldWh  = (uint32_t)s->today_yield_centikwh * 10u;
-        uint32_t loadWatt = (loadRaw * battVraw) / 1000;
-
-        lv_label_set_text_fmt(lbl_battV, "%d.%02d V", battV_i, battV_f);
-        lv_label_set_text_fmt(lbl_battA, "%d.%1d A", battA_i, battA_f);
-        lv_label_set_text_fmt(lbl_loadA, "%d.%1d A", load_i, load_f);
-        lv_label_set_text_fmt(lbl_solar, "%lu W", (unsigned long)solarW);
-        lv_label_set_text_fmt(lbl_yield, "Yield: %lu Wh", (unsigned long)yieldWh);
-        lv_label_set_text_fmt(lbl_state, "%s", charger_state_str(s->device_state));
-        lv_label_set_text_fmt(lbl_error, "%s", err_str(s->error_code));
-        lv_label_set_text_fmt(lbl_load_watt, "%lu W", (unsigned long)loadWatt);
-        break;
-    }
-    case VICTRON_DEVICE_TYPE_BATTERY_MONITOR: {
-        const victron_battery_data_t *b = &d->payload.battery;
-
-        label_set_unsigned_fixed(lbl_bmon_voltage,
-                                 (unsigned)b->battery_voltage_centi,
-                                 100, 2, " V");
-
-        int current_cent = round_div_signed((int)b->battery_current_milli, 10);
-        label_set_signed_fixed(lbl_bmon_current, current_cent, 100, 2, " A");
-
-        label_set_unsigned_fixed(lbl_bmon_soc,
-                                 (unsigned)b->soc_deci_percent,
-                                 10, 1, " %");
-
-        uint16_t ttg = b->time_to_go_minutes;
-        lv_label_set_text_fmt(lbl_bmon_ttg, "%uh %02um",
-                              (unsigned)(ttg / 60), (unsigned)(ttg % 60));
-
-        label_set_signed_fixed(lbl_bmon_consumed,
-                               (int)b->consumed_ah_deci,
-                               10, 1, " Ah");
-
-        char aux_buf[32];
-        format_aux_value(b->aux_input, b->aux_value, aux_buf, sizeof(aux_buf));
-        lv_label_set_text(lbl_bmon_aux, aux_buf);
-
-        if (b->alarm_reason == 0) {
-            lv_label_set_text(lbl_error, "");
+    if (ui->active_view && ui->active_view->update) {
+        ui->active_view->update(ui->active_view, d);
+    } else if (ui->lbl_error) {
+        if (d->type == VICTRON_DEVICE_TYPE_UNKNOWN) {
+            lv_label_set_text(ui->lbl_error, "Unknown device type");
         } else {
-            lv_label_set_text_fmt(lbl_error, "Alarm: 0x%04X",
-                                  b->alarm_reason);
+            lv_label_set_text(ui->lbl_error, "No renderer for device type");
         }
-        break;
-    }
-    default:
-        lv_label_set_text(lbl_error, "Unknown device type");
-        break;
     }
 
     lvgl_port_unlock();
 }
 
-static const char *err_str(uint8_t e) {
-    switch (e) {
-        case 0:   return "OK";
-        case 1:   return "Battery temp too high";
-        case 2:   return "Battery voltage too high";
-        case 3:
-        case 4:   return "Remote temp-sensor failure";
-        case 5:   return "Remote temp-sensor lost";
-        case 6:
-        case 7:   return "Remote voltage-sense failure";
-        case 8:   return "Remote voltage-sense lost";
-        case 11:  return "Battery high ripple voltage";
-        case 14:  return "Battery too cold for LiFePO4";
-        case 17:  return "Controller overheating";
-        case 18:  return "Controller over-current";
-        case 20:  return "Max bulk time exceeded";
-        case 21:  return "Current-sensor out of range";
-        case 22:
-        case 23:  return "Internal temp-sensor failure";
-        case 24:  return "Fan failure";
-        case 26:  return "Power terminal overheated";
-        case 27:  return "Battery-side short circuit";
-        case 28:  return "Power-stage hardware issue";
-        case 29:  return "Over-charge protection triggered";
-        case 33:  return "PV over-voltage";
-        case 34:  return "PV over-current";
-        case 35:  return "PV over-power";
-        case 38:
-        case 39:  return "PV input shorted to protect battery";
-        case 40:  return "PV input failed to short";
-        case 41:  return "Inverter-mode PV isolation";
-        case 42:
-        case 43:  return "PV side ground-fault";
-        default:  return "Unknown error";
-    }
-}
-
-const char *charger_state_str(uint8_t s) {
-    switch (s) {
-        case 0: return "Off";
-        case 1: return "Low Power";
-        case 2: return "Fault";
-        case 3: return "Bulk";
-        case 4: return "Absorption";
-        case 5: return "Float";
-        case 6: return "Storage";
-        case 7: return "Equalize (Man)";
-        case 8: return "Equalize (Auto)";
-        case 9: return "Inverting";
-        case 10: return "Power Supply";
-        case 11: return "Starting";
-        default: return "Unknown";
-    }
-}
-
 static void ta_event_cb(lv_event_t *e) {
+    ui_state_t *ui = lv_event_get_user_data(e);
     lv_obj_t *ta = lv_event_get_target(e);
     lv_event_code_t code = lv_event_get_code(e);
+    if (ui == NULL || ui->keyboard == NULL) {
+        return;
+    }
+
     if (code == LV_EVENT_FOCUSED) {
-        lv_keyboard_set_textarea(kb, ta);
-        lv_obj_move_foreground(kb);
-        lv_obj_clear_flag(kb, LV_OBJ_FLAG_HIDDEN);
+        lv_keyboard_set_textarea(ui->keyboard, ta);
+        lv_obj_move_foreground(ui->keyboard);
+        lv_obj_clear_flag(ui->keyboard, LV_OBJ_FLAG_HIDDEN);
     } else if (code == LV_EVENT_DEFOCUSED || code == LV_EVENT_CANCEL || code == LV_EVENT_READY) {
-        lv_keyboard_set_textarea(kb, NULL);
-        lv_obj_add_flag(kb, LV_OBJ_FLAG_HIDDEN);
+        lv_keyboard_set_textarea(ui->keyboard, NULL);
+        lv_obj_add_flag(ui->keyboard, LV_OBJ_FLAG_HIDDEN);
     }
 }
 
 static void brightness_slider_event_cb(lv_event_t *e) {
+    ui_state_t *ui = lv_event_get_user_data(e);
     int val = lv_slider_get_value(lv_event_get_target(e));
-    brightness = (uint8_t)val; // <-- update global variable
+    if (ui == NULL) {
+        return;
+    }
+    ui->brightness = (uint8_t)val;
     bsp_display_brightness_set(val);
-    save_brightness(brightness); // Persist to NVS
+    save_brightness(ui->brightness);
     ESP_LOGI(TAG_UI, "Brightness set to %d", val);
 }
 
 static void wifi_event_cb(lv_event_t *e) {
+    ui_state_t *ui = lv_event_get_user_data(e);
     lv_obj_t *ta = lv_event_get_target(e);
     const char *txt = lv_textarea_get_text(ta);
+    if (ui == NULL) {
+        return;
+    }
     nvs_handle_t h;
     esp_err_t err = nvs_open(WIFI_NAMESPACE, NVS_READWRITE, &h);
     if (err == ESP_OK) {
-        if (ta == ta_ssid)
+        if (ta == ui->wifi.ssid)
             nvs_set_str(h, "ssid", txt);
-        else if (ta == ta_password)
+        else if (ta == ui->wifi.password)
             nvs_set_str(h, "password", txt);
         nvs_commit(h);
         nvs_close(h);
@@ -666,7 +408,9 @@ static void wifi_event_cb(lv_event_t *e) {
 
 
 static void ap_checkbox_event_cb(lv_event_t *e) {
-    bool en = lv_obj_has_state(cb_ap_enable, LV_STATE_CHECKED);
+    ui_state_t *ui = lv_event_get_user_data(e);
+    lv_obj_t *checkbox = lv_event_get_target(e);
+    bool en = lv_obj_has_state(checkbox, LV_STATE_CHECKED);
     nvs_handle_t h;
     esp_err_t err = nvs_open(WIFI_NAMESPACE, NVS_READWRITE, &h);
     if (err == ESP_OK) {
@@ -693,7 +437,11 @@ static void ap_checkbox_event_cb(lv_event_t *e) {
 }
 
 static void save_key_btn_event_cb(lv_event_t *e) {
-    const char *hex = lv_textarea_get_text(ta_key);
+    ui_state_t *ui = lv_event_get_user_data(e);
+    if (ui == NULL || ui->ta_key == NULL) {
+        return;
+    }
+    const char *hex = lv_textarea_get_text(ui->ta_key);
     if (strlen(hex) != 32) {
         ESP_LOGE(TAG_UI, "AES key must be 32 hex chars");
         // Optionally show a message box or error label
@@ -724,317 +472,178 @@ void ui_set_ble_mac(const uint8_t *mac) {
     snprintf(mac_str, sizeof(mac_str),
              "%02X:%02X:%02X:%02X:%02X:%02X",
              mac[5], mac[4], mac[3], mac[2], mac[1], mac[0]);
+    ui_state_t *ui = &g_ui;
     lvgl_port_lock(0);
-    lv_textarea_set_text(ta_mac, mac_str);
+    if (ui->ta_mac) {
+        lv_textarea_set_text(ui->ta_mac, mac_str);
+    }
     lvgl_port_unlock();
 }
 
 // --- Screensaver logic ---
-static void screensaver_enable(bool enable) {
+static void screensaver_enable(ui_state_t *ui, bool enable) {
+    if (ui == NULL || ui->screensaver.timer == NULL) {
+        return;
+    }
+
     if (enable) {
-        screensaver_active = false; // Ensure not active on enable
-        bsp_display_brightness_set(brightness); // Restore normal brightness
-        lv_timer_set_period(screensaver_timer, screensaver_timeout * 1000);
-        lv_timer_reset(screensaver_timer);      // Reset timer so timeout starts now
-        lv_timer_resume(screensaver_timer);
+        ui->screensaver.active = false;
+        bsp_display_brightness_set(ui->brightness);
+        lv_timer_set_period(ui->screensaver.timer, ui->screensaver.timeout * 1000U);
+        lv_timer_reset(ui->screensaver.timer);
+        lv_timer_resume(ui->screensaver.timer);
     } else {
-        lv_timer_pause(screensaver_timer);
-        if (screensaver_active) {
-            bsp_display_brightness_set(brightness); // Restore normal brightness
-            screensaver_active = false;
+        lv_timer_pause(ui->screensaver.timer);
+        if (ui->screensaver.active) {
+            bsp_display_brightness_set(ui->brightness);
+            ui->screensaver.active = false;
         }
     }
 }
 
 static void screensaver_timer_cb(lv_timer_t *timer) {
-    if (screensaver_enabled && !screensaver_active) {
-        bsp_display_brightness_set(screensaver_brightness);
-        screensaver_active = true;
+    ui_state_t *ui = timer ? (ui_state_t *)timer->user_data : NULL;
+    if (ui == NULL) {
+        return;
+    }
+
+    if (ui->screensaver.enabled && !ui->screensaver.active) {
+        bsp_display_brightness_set(ui->screensaver.brightness);
+        ui->screensaver.active = true;
     }
 }
 
-static void screensaver_wake(void) {
-    if (screensaver_enabled) {
-        lv_timer_reset(screensaver_timer);
-        if (screensaver_active) {
-            bsp_display_brightness_set(brightness); // uses up-to-date value
-            screensaver_active = false;
+static void screensaver_wake(ui_state_t *ui) {
+    if (ui == NULL || ui->screensaver.timer == NULL) {
+        return;
+    }
+
+    if (ui->screensaver.enabled) {
+        lv_timer_reset(ui->screensaver.timer);
+        if (ui->screensaver.active) {
+            bsp_display_brightness_set(ui->brightness);
+            ui->screensaver.active = false;
         }
     }
 }
 
 // Screensaver UI event callbacks
 static void cb_screensaver_event_cb(lv_event_t *e) {
-    screensaver_enabled = lv_obj_has_state(cb_screensaver, LV_STATE_CHECKED);
-    save_screensaver_settings(screensaver_enabled, screensaver_brightness, screensaver_timeout);
-    screensaver_enable(screensaver_enabled);
+    ui_state_t *ui = lv_event_get_user_data(e);
+    if (ui == NULL || ui->screensaver.checkbox == NULL) {
+        return;
+    }
+
+    ui->screensaver.enabled = lv_obj_has_state(ui->screensaver.checkbox, LV_STATE_CHECKED);
+    save_screensaver_settings(ui->screensaver.enabled,
+                              ui->screensaver.brightness,
+                              ui->screensaver.timeout);
+    screensaver_enable(ui, ui->screensaver.enabled);
 }
 
 static void slider_ss_brightness_event_cb(lv_event_t *e) {
-    screensaver_brightness = lv_slider_get_value(slider_ss_brightness);
-    save_screensaver_settings(screensaver_enabled, screensaver_brightness, screensaver_timeout);
+    ui_state_t *ui = lv_event_get_user_data(e);
+    if (ui == NULL || ui->screensaver.slider_brightness == NULL) {
+        return;
+    }
+
+    ui->screensaver.brightness = lv_slider_get_value(ui->screensaver.slider_brightness);
+    save_screensaver_settings(ui->screensaver.enabled,
+                              ui->screensaver.brightness,
+                              ui->screensaver.timeout);
+
+    if (ui->screensaver.active) {
+        bsp_display_brightness_set(ui->screensaver.brightness);
+    }
 }
 
 static void spinbox_ss_time_event_cb(lv_event_t *e) {
-    screensaver_timeout = lv_spinbox_get_value(spinbox_ss_time);
-    save_screensaver_settings(screensaver_enabled, screensaver_brightness, screensaver_timeout);
-    if (screensaver_timer) lv_timer_set_period(screensaver_timer, screensaver_timeout * 1000);
+    ui_state_t *ui = lv_event_get_user_data(e);
+    if (ui == NULL || ui->screensaver.spinbox_timeout == NULL) {
+        return;
+    }
+
+    ui->screensaver.timeout = lv_spinbox_get_value(ui->screensaver.spinbox_timeout);
+    save_screensaver_settings(ui->screensaver.enabled,
+                              ui->screensaver.brightness,
+                              ui->screensaver.timeout);
+    if (ui->screensaver.timer) {
+        lv_timer_set_period(ui->screensaver.timer, ui->screensaver.timeout * 1000U);
+    }
 }
 
 static void spinbox_ss_time_increment_event_cb(lv_event_t *e) {
+    ui_state_t *ui = lv_event_get_user_data(e);
+    if (ui == NULL || ui->screensaver.spinbox_timeout == NULL) {
+        return;
+    }
+
     lv_event_code_t code = lv_event_get_code(e);
-    if(code == LV_EVENT_SHORT_CLICKED || code == LV_EVENT_LONG_PRESSED_REPEAT) {
-        lv_spinbox_increment(spinbox_ss_time);
-        screensaver_timeout = lv_spinbox_get_value(spinbox_ss_time);
-        save_screensaver_settings(screensaver_enabled, screensaver_brightness, screensaver_timeout);
-        if (screensaver_timer) lv_timer_set_period(screensaver_timer, screensaver_timeout * 1000);
+    if (code == LV_EVENT_SHORT_CLICKED || code == LV_EVENT_LONG_PRESSED_REPEAT) {
+        lv_spinbox_increment(ui->screensaver.spinbox_timeout);
+        ui->screensaver.timeout = lv_spinbox_get_value(ui->screensaver.spinbox_timeout);
+        save_screensaver_settings(ui->screensaver.enabled,
+                                  ui->screensaver.brightness,
+                                  ui->screensaver.timeout);
+        if (ui->screensaver.timer) {
+            lv_timer_set_period(ui->screensaver.timer, ui->screensaver.timeout * 1000U);
+        }
     }
 }
 
 static void spinbox_ss_time_decrement_event_cb(lv_event_t *e) {
+    ui_state_t *ui = lv_event_get_user_data(e);
+    if (ui == NULL || ui->screensaver.spinbox_timeout == NULL) {
+        return;
+    }
+
     lv_event_code_t code = lv_event_get_code(e);
-    if(code == LV_EVENT_SHORT_CLICKED || code == LV_EVENT_LONG_PRESSED_REPEAT) {
-        lv_spinbox_decrement(spinbox_ss_time);
-        screensaver_timeout = lv_spinbox_get_value(spinbox_ss_time);
-        save_screensaver_settings(screensaver_enabled, screensaver_brightness, screensaver_timeout);
-        if (screensaver_timer) lv_timer_set_period(screensaver_timer, screensaver_timeout * 1000);
+    if (code == LV_EVENT_SHORT_CLICKED || code == LV_EVENT_LONG_PRESSED_REPEAT) {
+        lv_spinbox_decrement(ui->screensaver.spinbox_timeout);
+        ui->screensaver.timeout = lv_spinbox_get_value(ui->screensaver.spinbox_timeout);
+        save_screensaver_settings(ui->screensaver.enabled,
+                                  ui->screensaver.brightness,
+                                  ui->screensaver.timeout);
+        if (ui->screensaver.timer) {
+            lv_timer_set_period(ui->screensaver.timer, ui->screensaver.timeout * 1000U);
+        }
     }
 }
 
 // Add this callback implementation at file scope:
-static void ensure_device_layout(victron_device_type_t type)
+static void ensure_device_layout(ui_state_t *ui, victron_device_type_t type)
 {
-    if (type == current_device_type) {
+    if (ui == NULL) {
         return;
     }
 
-    if (type == VICTRON_DEVICE_TYPE_SOLAR_CHARGER) {
-        if (cont_solar) {
-            lv_obj_clear_flag(cont_solar, LV_OBJ_FLAG_HIDDEN);
-        }
-        if (cont_battery) {
-            lv_obj_add_flag(cont_battery, LV_OBJ_FLAG_HIDDEN);
-        }
-    } else if (type == VICTRON_DEVICE_TYPE_BATTERY_MONITOR) {
-        if (cont_battery) {
-            lv_obj_clear_flag(cont_battery, LV_OBJ_FLAG_HIDDEN);
-        }
-        if (cont_solar) {
-            lv_obj_add_flag(cont_solar, LV_OBJ_FLAG_HIDDEN);
-        }
+    if (type == ui->current_device_type) {
+        return;
     }
 
-    current_device_type = type;
+    if (ui->active_view && ui->active_view->hide) {
+        ui->active_view->hide(ui->active_view);
+    }
+
+    ui->active_view = NULL;
+
+    ui_device_view_t *view = ui_view_registry_ensure(ui, type, ui->tab_live);
+    if (view && view->show) {
+        view->show(view);
+        ui->active_view = view;
+    } else if (type != VICTRON_DEVICE_TYPE_UNKNOWN) {
+        ESP_LOGW(TAG_UI, "No view available for device type 0x%02X", (unsigned)type);
+    }
+
+    ui->current_device_type = type;
 }
 
 static const char *device_type_name(victron_device_type_t type)
 {
-    switch (type) {
-    case VICTRON_DEVICE_TYPE_SOLAR_CHARGER:
-        return "Solar Charger";
-    case VICTRON_DEVICE_TYPE_BATTERY_MONITOR:
-        return "Battery Monitor";
-    default:
-        return "Unknown";
-    }
-}
-
-static size_t append_text(char *dst, size_t max, const char *text)
-{
-    if (max == 0) {
-        return 0;
-    }
-
-    size_t i = 0;
-    while (i < max - 1 && text[i] != '\0') {
-        dst[i] = text[i];
-        ++i;
-    }
-    dst[i] = '\0';
-    return i;
-}
-
-static size_t write_uint(char *dst, size_t max, unsigned value)
-{
-    if (max == 0) {
-        return 0;
-    }
-
-    if (value == 0) {
-        dst[0] = '0';
-        if (max > 1) {
-            dst[1] = '\0';
-        }
-        return 1;
-    }
-
-    char tmp[16];
-    size_t pos = 0;
-    while (value > 0 && pos < sizeof(tmp)) {
-        tmp[pos++] = (char)('0' + (value % 10));
-        value /= 10;
-    }
-
-    size_t i = 0;
-    while (pos > 0 && i < max - 1) {
-        dst[i++] = tmp[--pos];
-    }
-    dst[i] = '\0';
-    return i;
-}
-
-static size_t build_unsigned_fixed(char *buf, size_t max,
-                                   unsigned value, unsigned scale,
-                                   uint8_t frac_digits)
-{
-    if (max == 0) {
-        return 0;
-    }
-
-    size_t idx = write_uint(buf, max, value / scale);
-    if (idx >= max - 1 || frac_digits == 0) {
-        return idx;
-    }
-
-    buf[idx++] = '.';
-    buf[idx] = '\0';
-
-    unsigned frac = value % scale;
-    unsigned divisor = scale;
-    for (uint8_t i = 0; i < frac_digits && idx < max - 1; ++i) {
-        divisor /= 10U;
-        unsigned digit = divisor ? frac / divisor : 0U;
-        buf[idx++] = (char)('0' + digit);
-        buf[idx] = '\0';
-        if (divisor) {
-            frac %= divisor;
-        }
-    }
-
-    return idx;
-}
-
-static size_t build_signed_fixed(char *buf, size_t max, int value,
-                                 unsigned scale, uint8_t frac_digits)
-{
-    if (max == 0) {
-        return 0;
-    }
-
-    size_t idx = 0;
-    bool negative = value < 0;
-    unsigned abs_val = negative ? (unsigned)(-value) : (unsigned)value;
-    if (negative && abs_val != 0 && idx < max - 1) {
-        buf[idx++] = '-';
-    }
-
-    size_t written = build_unsigned_fixed(buf + idx, max - idx,
-                                          abs_val, scale, frac_digits);
-    return idx + written;
-}
-
-static void label_set_unsigned_fixed(lv_obj_t *label, unsigned value,
-                                     unsigned scale, uint8_t frac_digits,
-                                     const char *unit)
-{
-    char number[24] = {0};
-    build_unsigned_fixed(number, sizeof(number), value, scale, frac_digits);
-
-    char text[32] = {0};
-    size_t idx = append_text(text, sizeof(text), number);
-    if (unit != NULL && idx < sizeof(text) - 1) {
-        append_text(text + idx, sizeof(text) - idx, unit);
-    }
-
-    lv_label_set_text(label, text);
-}
-
-static void label_set_signed_fixed(lv_obj_t *label, int value,
-                                   unsigned scale, uint8_t frac_digits,
-                                   const char *unit)
-{
-    char number[24] = {0};
-    build_signed_fixed(number, sizeof(number), value, scale, frac_digits);
-
-    char text[32] = {0};
-    size_t idx = append_text(text, sizeof(text), number);
-    if (unit != NULL && idx < sizeof(text) - 1) {
-        append_text(text + idx, sizeof(text) - idx, unit);
-    }
-
-    lv_label_set_text(label, text);
-}
-
-static int round_div_signed(int value, unsigned divisor)
-{
-    if (divisor == 0) {
-        return value;
-    }
-
-    if (value >= 0) {
-        return (value + (int)(divisor / 2)) / (int)divisor;
-    }
-    return -(((-value) + (int)(divisor / 2)) / (int)divisor);
-}
-
-static void format_aux_value(uint8_t aux_input, uint16_t aux_value,
-                             char *out, size_t out_len)
-{
-    if (out_len == 0) {
-        return;
-    }
-
-    const uint16_t AUX_NA = 0xFFFF;
-    size_t idx = 0;
-
-    switch (aux_input & 0x03u) {
-    case 0:
-        idx += append_text(out + idx, out_len - idx, "Aux ");
-        if (aux_value == AUX_NA) {
-            idx += append_text(out + idx, out_len - idx, "N/A");
-        } else {
-            char number[16] = {0};
-            build_unsigned_fixed(number, sizeof(number), aux_value, 100, 2);
-            idx += append_text(out + idx, out_len - idx, number);
-            idx += append_text(out + idx, out_len - idx, " V");
-        }
-        break;
-    case 1:
-        idx += append_text(out + idx, out_len - idx, "Mid ");
-        if (aux_value == AUX_NA) {
-            idx += append_text(out + idx, out_len - idx, "N/A");
-        } else {
-            char number[16] = {0};
-            build_unsigned_fixed(number, sizeof(number), aux_value, 100, 2);
-            idx += append_text(out + idx, out_len - idx, number);
-            idx += append_text(out + idx, out_len - idx, " V");
-        }
-        break;
-    case 2:
-        idx += append_text(out + idx, out_len - idx, "Temp ");
-        if (aux_value == AUX_NA) {
-            idx += append_text(out + idx, out_len - idx, "N/A");
-        } else {
-            int temp_centi = (int)aux_value - 27315;
-            int temp_tenths = round_div_signed(temp_centi, 10);
-            char number[16] = {0};
-            build_signed_fixed(number, sizeof(number), temp_tenths, 10, 1);
-            idx += append_text(out + idx, out_len - idx, number);
-            idx += append_text(out + idx, out_len - idx, " C");
-        }
-        break;
-    default:
-        idx = append_text(out, out_len, "None");
-        break;
-    }
-
-    if (idx < out_len) {
-        out[idx] = '\0';
-    } else {
-        out[out_len - 1] = '\0';
-    }
+    return ui_view_registry_name(type);
 }
 
 static void tabview_touch_event_cb(lv_event_t *e) {
-    screensaver_wake();
+    ui_state_t *ui = lv_event_get_user_data(e);
+    screensaver_wake(ui);
 }

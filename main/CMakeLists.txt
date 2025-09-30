@@ -1,4 +1,4 @@
-file(GLOB SOURCES "*.c")
+file(GLOB SOURCES "*.c" "ui/*.c")
 
 idf_component_register(
     SRCS       ${SOURCES}
