@@ -365,7 +365,12 @@ keyForm.addEventListener('animationend', function() {
     openButton.focus();
   }
 
-  openButton.addEventListener('click', openModal);
+  openButton.addEventListener('click', function() {
+    openModal();
+    if (!openButton.classList.contains('guide-button--swipe-disabled')) {
+      openButton.classList.add('guide-button--swipe-disabled');
+    }
+  });
   closeButton.addEventListener('click', closeModal);
 
   prevButton.addEventListener('click', function() {

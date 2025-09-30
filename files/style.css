@@ -332,8 +332,27 @@ h1 {
   font-weight: 600;
   letter-spacing: 0.03em;
   cursor: pointer;
+  position: relative;
+  overflow: hidden;
   transition: background 0.2s, border-color 0.2s, box-shadow 0.2s;
   backdrop-filter: blur(6px);
+  box-shadow: 0 0 18px rgba(0, 122, 204, 0.22);
+  animation: guideButtonGlow 4.5s ease-in-out infinite;
+}
+
+.guide-button::before {
+  content: "";
+  position: absolute;
+  top: -45%;
+  bottom: -45%;
+  left: -70%;
+  width: 55%;
+  background: linear-gradient(120deg, transparent 0%, rgba(194, 236, 255, 0.7) 45%, rgba(194, 236, 255, 0.35) 60%, transparent 100%);
+  transform: translateX(-140%) rotate(18deg);
+  animation: guideButtonSwipe 5.5s ease-in-out infinite;
+  opacity: 0;
+  pointer-events: none;
+  mix-blend-mode: screen;
 }
 
 .guide-button:hover,
@@ -348,6 +367,16 @@ h1 {
   transform: translateY(1px);
 }
 
+.guide-button.guide-button--swipe-disabled {
+  animation: none;
+  box-shadow: 0 0 12px rgba(0, 122, 204, 0.2);
+}
+
+.guide-button.guide-button--swipe-disabled::before {
+  animation: none;
+  opacity: 0;
+}
+
 @media (max-width: 600px) {
   .top-actions {
     top: 1rem;
@@ -357,6 +386,43 @@ h1 {
   .guide-button {
     font-size: 0.85rem;
     padding: 0.35rem 1rem;
+  }
+}
+
+@keyframes guideButtonGlow {
+  0%, 65%, 100% {
+    box-shadow: 0 0 5px rgba(0, 122, 204, 0.22);
+  }
+  30% {
+    box-shadow: 0 0 15px rgba(123, 207, 255, 0.42);
+  }
+}
+
+@keyframes guideButtonSwipe {
+  0%, 55% {
+    transform: translateX(-140%) rotate(18deg);
+    opacity: 0;
+  }
+  65% {
+    opacity: 0.8;
+  }
+  75% {
+    transform: translateX(120%) rotate(18deg);
+    opacity: 0;
+  }
+  100% {
+    transform: translateX(120%) rotate(18deg);
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .guide-button {
+    animation: none;
+  }
+  .guide-button::before {
+    animation: none;
+    opacity: 0;
   }
 }
 
