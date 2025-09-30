@@ -460,6 +460,26 @@ h1 {
   color: #ccd8e6;
 }
 
+.guide-step__media {
+  margin: 0 0 1rem;
+  text-align: center;
+}
+
+.guide-step__media a {
+  display: inline-flex;
+}
+
+.guide-step__media img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 12px;
+  box-shadow: 0 18px 35px rgba(0, 0, 0, 0.45);
+}
+
+.guide-step__media + .guide-step__media {
+  margin-top: 1.25rem;
+}
+
 .guide-modal__footer {
   display: flex;
   justify-content: space-between;
