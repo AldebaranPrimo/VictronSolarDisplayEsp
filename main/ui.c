@@ -25,6 +25,7 @@ static const char *TAG_UI = "UI_MODULE";
 static ui_state_t g_ui = {
     .brightness = 100,
     .current_device_type = VICTRON_DEVICE_TYPE_UNKNOWN,
+    .has_received_data = false,
 };
 
 // Forward declarations
@@ -105,6 +106,14 @@ void ui_init(void) {
 #endif
     lv_style_set_text_color(&ui->styles.value, lv_color_white());
 
+    ui->lbl_no_data = lv_label_create(ui->tab_live);
+    lv_label_set_text(ui->lbl_no_data, "No live data received yet");
+    lv_obj_add_style(ui->lbl_no_data, &ui->styles.medium, 0);
+    lv_label_set_long_mode(ui->lbl_no_data, LV_LABEL_LONG_WRAP);
+    lv_obj_set_width(ui->lbl_no_data, lv_pct(90));
+    lv_obj_set_style_text_align(ui->lbl_no_data, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_center(ui->lbl_no_data);
+
     ui_info_panel_init(ui, default_ssid, default_pass, ap_enabled);
 
     lv_obj_add_event_cb(lv_scr_act(), tabview_touch_event_cb, LV_EVENT_PRESSED, ui);
@@ -126,6 +135,13 @@ void ui_on_panel_data(const victron_data_t *d) {
     ui_state_t *ui = &g_ui;
 
     lvgl_port_lock(0);
+
+    if (!ui->has_received_data) {
+        ui->has_received_data = true;
+        if (ui->lbl_no_data) {
+            lv_obj_add_flag(ui->lbl_no_data, LV_OBJ_FLAG_HIDDEN);
+        }
+    }
 
     const char *type_str = device_type_name(d->type);
     if (ui->lbl_device_type) {
