@@ -16,7 +16,7 @@
 #define WIFI_NAMESPACE "wifi"
 
 static const char *TAG_INFO = "UI_INFO";
-static const char *APP_VERSION = "1.1.0";
+static const char *APP_VERSION = "1.1.1";
 
 static void ta_event_cb(lv_event_t *e);
 static void wifi_event_cb(lv_event_t *e);
