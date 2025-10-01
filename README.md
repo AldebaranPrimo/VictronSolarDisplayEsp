@@ -64,7 +64,7 @@ Below are screenshots of the device UI, showing both the Live tab and various In
 
 - **1.1.0** adds full Victron Battery Monitor (record type 0x02) support alongside Solar Charger (record type 0x01) telemetry with automatic UI updates.
 - Download prebuilt artifacts (`bootloader.bin`, `partition-table.bin`, `VictronSolarDisplayEsp.bin`, `spiffs.bin`, `flasher_args.json`, `README.md`) from the GitHub Releases page and flash them with the offsets shown below.
-- Use the ESP Web Tools demo at [https://demo.nihilanth.de/](https://demo.nihilanth.de/) to flash the firmware directly from Chrome or Microsoft Edge without installing local tooling.
+- Use the demo page at [https://demo.nihilanth.de/](https://demo.nihilanth.de/) to flash the firmware directly from Chrome or Microsoft Edge without installing local tooling (except usb driver, youll need that one).
 - Verify Battery Monitor metrics (SOC, TTG, currents) after flashing to confirm your AES key and device pairing.
 
 ---
