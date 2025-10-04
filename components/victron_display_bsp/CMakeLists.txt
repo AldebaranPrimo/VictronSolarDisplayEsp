@@ -1,0 +1,17 @@
+idf_component_register(
+    SRCS
+        "esp_bsp.c"
+        "lv_port.c"
+    INCLUDE_DIRS
+        "include"
+    REQUIRES
+        driver
+        lvgl
+        esp_lcd
+        esp_lcd_touch
+        esp_lcd_axs15231b
+    PRIV_REQUIRES
+        esp_timer
+        esp_system
+        freertos
+)

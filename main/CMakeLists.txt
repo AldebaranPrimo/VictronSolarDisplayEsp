@@ -3,6 +3,8 @@ file(GLOB SOURCES "*.c" "ui/*.c")
 idf_component_register(
     SRCS       ${SOURCES}
     INCLUDE_DIRS "."
+    REQUIRES
+        victron_display_bsp
     PRIV_REQUIRES
         dns_server
         esp_netif 
