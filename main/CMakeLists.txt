@@ -23,5 +23,4 @@ idf_component_register(
 
 target_compile_definitions(${COMPONENT_LIB} PRIVATE
     LOG_LOCAL_LEVEL=ESP_LOG_VERBOSE
-    LV_CONF_PATH=${CMAKE_CURRENT_SOURCE_DIR}/lv_conf.h
 )
