@@ -23,13 +23,6 @@
 extern "C" {
 #endif
 
-#define ESP_LCD_TOUCH_VER_MAJOR    (1)
-#define ESP_LCD_TOUCH_VER_MINOR    (1)
-#define ESP_LCD_TOUCH_VER_PATCH    (2)
-
-#define CONFIG_ESP_LCD_TOUCH_MAX_POINTS     (1)
-#define CONFIG_ESP_LCD_TOUCH_MAX_BUTTONS    (0)
-
 /**
  * @brief Touch controller type
  *
