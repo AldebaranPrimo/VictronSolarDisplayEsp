@@ -84,6 +84,32 @@ void ui_init(void) {
     ui->relay_description = NULL;
     ui->relay_refresh_in_progress = false;
 
+    bool relay_enabled = ui->relay_tab_enabled;
+    uint8_t saved_count = 0;
+    uint8_t saved_pins[UI_MAX_RELAY_BUTTONS];
+    for (size_t i = 0; i < UI_MAX_RELAY_BUTTONS; ++i) {
+        saved_pins[i] = UI_RELAY_GPIO_UNASSIGNED;
+    }
+
+    esp_err_t relay_err = load_relay_config(&relay_enabled,
+                                            &saved_count,
+                                            saved_pins,
+                                            UI_MAX_RELAY_BUTTONS);
+    if (relay_err == ESP_OK) {
+        if (saved_count > UI_MAX_RELAY_BUTTONS) {
+            saved_count = UI_MAX_RELAY_BUTTONS;
+        }
+        ui->relay_tab_enabled = relay_enabled;
+        ui->relay_config.count = saved_count;
+        for (size_t i = 0; i < UI_MAX_RELAY_BUTTONS; ++i) {
+            ui->relay_config.gpio_pins[i] = (i < saved_count)
+                ? saved_pins[i]
+                : UI_RELAY_GPIO_UNASSIGNED;
+        }
+    } else {
+        ui->relay_tab_enabled = true;
+    }
+
     char default_ssid[33]; size_t ssid_len = sizeof(default_ssid);
     char default_pass[65]; size_t pass_len = sizeof(default_pass);
     uint8_t ap_enabled;
@@ -121,7 +147,6 @@ void ui_init(void) {
 
     ui->tab_settings_index = lv_obj_get_index(ui->tab_settings);
     ui->tab_relay_index = lv_obj_get_index(ui->tab_relay);
-    ui->relay_tab_enabled = true;
 
     lv_obj_add_event_cb(ui->tab_live, tabview_touch_event_cb, LV_EVENT_PRESSED, ui);
     lv_obj_add_event_cb(ui->tab_live, tabview_touch_event_cb, LV_EVENT_CLICKED, ui);

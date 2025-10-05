@@ -12,6 +12,12 @@
 #define SS_ENABLED_KEY        "enabled"
 #define SS_BRIGHT_KEY         "brightness"
 #define SS_TIMEOUT_KEY        "timeout"
+#define RELAY_NAMESPACE       "relay"
+#define RELAY_ENABLED_KEY     "enabled"
+#define RELAY_COUNT_KEY       "count"
+#define RELAY_PINS_KEY        "pins"
+#define RELAY_MAX_PINS        8
+#define RELAY_UNUSED_PIN      0xFF
 
 esp_err_t load_brightness(uint8_t *brightness_out) {
     nvs_handle_t h;
@@ -143,6 +149,114 @@ esp_err_t save_screensaver_settings(bool enabled, uint8_t brightness, uint16_t t
     nvs_set_u8(h, SS_BRIGHT_KEY, brightness);
     nvs_set_u16(h, SS_TIMEOUT_KEY, timeout);
     err = nvs_commit(h);
+    nvs_close(h);
+    return err;
+}
+
+esp_err_t load_relay_config(bool *enabled_out,
+                            uint8_t *count_out,
+                            uint8_t *pins_out,
+                            size_t max_pins)
+{
+    if (enabled_out == NULL || count_out == NULL || pins_out == NULL || max_pins == 0) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    nvs_handle_t h;
+    esp_err_t err = nvs_open(RELAY_NAMESPACE, NVS_READWRITE, &h);
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    bool changed = false;
+
+    uint8_t en = 1;
+    esp_err_t tmp = nvs_get_u8(h, RELAY_ENABLED_KEY, &en);
+    if (tmp != ESP_OK) {
+        en = 1;
+        nvs_set_u8(h, RELAY_ENABLED_KEY, en);
+        changed = true;
+    }
+
+    uint8_t count = 0;
+    tmp = nvs_get_u8(h, RELAY_COUNT_KEY, &count);
+    if (tmp != ESP_OK) {
+        count = 0;
+        nvs_set_u8(h, RELAY_COUNT_KEY, count);
+        changed = true;
+    }
+
+    if (count > RELAY_MAX_PINS) {
+        count = RELAY_MAX_PINS;
+        nvs_set_u8(h, RELAY_COUNT_KEY, count);
+        changed = true;
+    }
+
+    uint8_t stored_pins[RELAY_MAX_PINS];
+    memset(stored_pins, RELAY_UNUSED_PIN, sizeof(stored_pins));
+    size_t blob_size = sizeof(stored_pins);
+    tmp = nvs_get_blob(h, RELAY_PINS_KEY, stored_pins, &blob_size);
+    if (tmp != ESP_OK || blob_size != sizeof(stored_pins)) {
+        memset(stored_pins, RELAY_UNUSED_PIN, sizeof(stored_pins));
+        nvs_set_blob(h, RELAY_PINS_KEY, stored_pins, sizeof(stored_pins));
+        changed = true;
+    }
+
+    if (changed) {
+        nvs_commit(h);
+    }
+
+    nvs_close(h);
+
+    if (count > max_pins) {
+        count = (uint8_t)max_pins;
+    }
+
+    for (size_t i = 0; i < max_pins; ++i) {
+        if (i < count) {
+            pins_out[i] = stored_pins[i];
+        } else {
+            pins_out[i] = RELAY_UNUSED_PIN;
+        }
+    }
+
+    *enabled_out = (en != 0);
+    *count_out = count;
+    return ESP_OK;
+}
+
+esp_err_t save_relay_config(bool enabled,
+                            const uint8_t *pins,
+                            uint8_t count)
+{
+    if (count > RELAY_MAX_PINS) {
+        count = RELAY_MAX_PINS;
+    }
+
+    nvs_handle_t h;
+    esp_err_t err = nvs_open(RELAY_NAMESPACE, NVS_READWRITE, &h);
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    uint8_t stored_pins[RELAY_MAX_PINS];
+    for (size_t i = 0; i < RELAY_MAX_PINS; ++i) {
+        stored_pins[i] = RELAY_UNUSED_PIN;
+    }
+
+    if (pins != NULL) {
+        size_t copy_count = count;
+        if (copy_count > RELAY_MAX_PINS) {
+            copy_count = RELAY_MAX_PINS;
+        }
+        memcpy(stored_pins, pins, copy_count);
+    }
+
+    err = nvs_set_u8(h, RELAY_ENABLED_KEY, enabled ? 1 : 0);
+    if (err == ESP_OK) err = nvs_set_u8(h, RELAY_COUNT_KEY, count);
+    if (err == ESP_OK) err = nvs_set_blob(h, RELAY_PINS_KEY, stored_pins, sizeof(stored_pins));
+    if (err == ESP_OK) err = nvs_commit(h);
+
     nvs_close(h);
     return err;
 }

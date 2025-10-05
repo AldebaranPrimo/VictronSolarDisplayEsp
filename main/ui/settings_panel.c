@@ -49,6 +49,7 @@ static void relay_config_create_row(ui_state_t *ui, size_t index);
 static void relay_config_append_option(char *buf, size_t buf_len, const char *line);
 static void relay_config_append_gpio_option(char *buf, size_t buf_len, uint8_t pin);
 static uint8_t relay_config_parse_gpio_label(const char *label);
+static void relay_config_persist(ui_state_t *ui);
 
 static const uint8_t RELAY_GPIO_CHOICES[] = {5, 6, 7, 15, 16, 46, 9, 14};
 static const size_t RELAY_GPIO_COUNT = sizeof(RELAY_GPIO_CHOICES) / sizeof(RELAY_GPIO_CHOICES[0]);
@@ -472,7 +473,9 @@ static void apply_relay_tab_state(ui_state_t *ui, bool enabled, bool update_chec
         return;
     }
 
-    if (!update_checkbox && ui->relay_tab_enabled == enabled) {
+    bool previous_state = ui->relay_tab_enabled;
+
+    if (!update_checkbox && previous_state == enabled) {
         return;
     }
 
@@ -530,6 +533,10 @@ static void apply_relay_tab_state(ui_state_t *ui, bool enabled, bool update_chec
 
     relay_config_update_controls(ui);
     ui_relay_panel_refresh(ui);
+
+    if (previous_state != ui->relay_tab_enabled) {
+        relay_config_persist(ui);
+    }
 }
 
 static void save_key_btn_event_cb(lv_event_t *e)
@@ -731,6 +738,7 @@ static void relay_config_add_btn_event_cb(lv_event_t *e)
     relay_config_refresh_dropdowns(ui);
     relay_config_update_controls(ui);
     ui_relay_panel_refresh(ui);
+    relay_config_persist(ui);
 }
 
 static void relay_config_remove_btn_event_cb(lv_event_t *e)
@@ -763,6 +771,7 @@ static void relay_config_remove_btn_event_cb(lv_event_t *e)
     relay_config_refresh_dropdowns(ui);
     relay_config_update_controls(ui);
     ui_relay_panel_refresh(ui);
+    relay_config_persist(ui);
 }
 
 static void relay_dropdown_event_cb(lv_event_t *e)
@@ -801,6 +810,7 @@ static void relay_dropdown_event_cb(lv_event_t *e)
     relay_config_refresh_dropdowns(ui);
     relay_config_update_controls(ui);
     ui_relay_panel_refresh(ui);
+    relay_config_persist(ui);
 }
 
 static void relay_config_refresh_dropdowns(ui_state_t *ui)
@@ -996,4 +1006,30 @@ static uint8_t relay_config_parse_gpio_label(const char *label)
         }
     }
     return UI_RELAY_GPIO_UNASSIGNED;
+}
+
+static void relay_config_persist(ui_state_t *ui)
+{
+    if (ui == NULL) {
+        return;
+    }
+
+    uint8_t pins[UI_MAX_RELAY_BUTTONS];
+    uint8_t count = ui->relay_config.count;
+    if (count > UI_MAX_RELAY_BUTTONS) {
+        count = UI_MAX_RELAY_BUTTONS;
+    }
+
+    for (size_t i = 0; i < UI_MAX_RELAY_BUTTONS; ++i) {
+        if (i < count) {
+            pins[i] = ui->relay_config.gpio_pins[i];
+        } else {
+            pins[i] = UI_RELAY_GPIO_UNASSIGNED;
+        }
+    }
+
+    esp_err_t err = save_relay_config(ui->relay_tab_enabled, pins, count);
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG_SETTINGS, "Failed to save relay config: %s", esp_err_to_name(err));
+    }
 }

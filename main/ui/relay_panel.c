@@ -3,6 +3,9 @@
 #include <lvgl.h>
 #include <stdio.h>
 
+#define RELAY_COL_COUNT 4
+#define RELAY_MIN_BUTTON_SIZE 48
+
 static lv_style_t relay_btn_on_style;
 static lv_style_t relay_btn_off_style;
 static bool relay_styles_init = false;
@@ -10,17 +13,13 @@ static bool relay_styles_init = false;
 static void relay_button_event_cb(lv_event_t *e);
 static void relay_apply_button_style(ui_state_t *ui, size_t index);
 static void relay_destroy_button(ui_state_t *ui, size_t index);
+static lv_coord_t relay_calc_button_size(ui_state_t *ui);
 
 void ui_relay_panel_init(ui_state_t *ui)
 {
     if (ui == NULL || ui->tab_relay == NULL) {
         return;
     }
-
-    lv_obj_t *title = lv_label_create(ui->tab_relay);
-    lv_obj_add_style(title, &ui->styles.medium, 0);
-    lv_label_set_text(title, "GPIO Relay Control");
-    lv_obj_align(title, LV_ALIGN_TOP_LEFT, 8, 16);
 
     if (!relay_styles_init) {
         lv_style_init(&relay_btn_on_style);
@@ -30,8 +29,8 @@ void ui_relay_panel_init(ui_state_t *ui)
         lv_style_set_radius(&relay_btn_on_style, 10);
 
         lv_style_init(&relay_btn_off_style);
-        lv_style_set_bg_color(&relay_btn_off_style, lv_palette_lighten(LV_PALETTE_GREY, 2));
-        lv_style_set_text_color(&relay_btn_off_style, lv_palette_darken(LV_PALETTE_GREY, 3));
+        lv_style_set_bg_color(&relay_btn_off_style, lv_palette_darken(LV_PALETTE_GREY, 2));
+        lv_style_set_text_color(&relay_btn_off_style, lv_color_white());
         lv_style_set_border_width(&relay_btn_off_style, 0);
         lv_style_set_radius(&relay_btn_off_style, 10);
         relay_styles_init = true;
@@ -42,25 +41,28 @@ void ui_relay_panel_init(ui_state_t *ui)
                       "No relay buttons configured. Add them from Settings -> Relay controls.");
     lv_label_set_long_mode(description, LV_LABEL_LONG_WRAP);
     lv_obj_set_width(description, lv_pct(90));
-    lv_obj_align(description, LV_ALIGN_TOP_MID, 0, 48);
+    lv_obj_align(description, LV_ALIGN_TOP_MID, 0, 20);
     ui->relay_description = description;
+
+    lv_obj_clear_flag(ui->tab_relay, LV_OBJ_FLAG_SCROLLABLE);
 
     ui->relay_grid = lv_obj_create(ui->tab_relay);
     lv_obj_remove_style_all(ui->relay_grid);
-    lv_obj_set_width(ui->relay_grid, lv_pct(90));
-    lv_obj_set_height(ui->relay_grid, LV_SIZE_CONTENT);
-    lv_obj_set_style_pad_gap(ui->relay_grid, 12, 0);
-    lv_obj_set_style_pad_row(ui->relay_grid, 12, 0);
-    lv_obj_set_style_pad_column(ui->relay_grid, 12, 0);
+    lv_obj_set_size(ui->relay_grid, lv_pct(92), LV_SIZE_CONTENT);
+    lv_obj_set_style_pad_row(ui->relay_grid, 16, 0);
+    lv_obj_set_style_pad_column(ui->relay_grid, 16, 0);
     lv_obj_set_style_pad_top(ui->relay_grid, 0, 0);
     lv_obj_set_style_pad_bottom(ui->relay_grid, 0, 0);
+    lv_obj_set_style_pad_left(ui->relay_grid, 0, 0);
+    lv_obj_set_style_pad_right(ui->relay_grid, 0, 0);
     lv_obj_set_layout(ui->relay_grid, LV_LAYOUT_FLEX);
     lv_obj_set_flex_flow(ui->relay_grid, LV_FLEX_FLOW_ROW_WRAP);
     lv_obj_set_flex_align(ui->relay_grid,
                           LV_FLEX_ALIGN_CENTER,
                           LV_FLEX_ALIGN_START,
                           LV_FLEX_ALIGN_CENTER);
-    lv_obj_align(ui->relay_grid, LV_ALIGN_TOP_MID, 0, 120);
+    lv_obj_clear_flag(ui->relay_grid, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_align(ui->relay_grid, LV_ALIGN_TOP_MID, 0, 20);
     lv_obj_add_flag(ui->relay_grid, LV_OBJ_FLAG_HIDDEN);
 
     ui_relay_panel_refresh(ui);
@@ -84,6 +86,7 @@ void ui_relay_panel_refresh(ui_state_t *ui)
     }
 
     bool has_visible = false;
+    lv_coord_t button_size = relay_calc_button_size(ui);
 
     for (size_t i = 0; i < ui->relay_config.count; ++i) {
         uint8_t pin = ui->relay_config.gpio_pins[i];
@@ -98,14 +101,15 @@ void ui_relay_panel_refresh(ui_state_t *ui)
         lv_obj_t *btn = ui->relay_buttons[i];
         if (btn == NULL) {
             btn = lv_btn_create(ui->relay_grid);
-            lv_obj_set_width(btn, lv_pct(30));
-            lv_obj_set_height(btn, LV_SIZE_CONTENT);
+            lv_obj_set_size(btn, button_size, button_size);
             lv_obj_add_event_cb(btn, relay_button_event_cb, LV_EVENT_CLICKED, ui);
             ui->relay_buttons[i] = btn;
 
             lv_obj_t *label = lv_label_create(btn);
             lv_obj_center(label);
             ui->relay_button_labels[i] = label;
+        } else {
+            lv_obj_set_size(btn, button_size, button_size);
         }
 
         lv_obj_clear_flag(btn, LV_OBJ_FLAG_HIDDEN);
@@ -205,4 +209,32 @@ static void relay_destroy_button(ui_state_t *ui, size_t index)
     }
 
     ui->relay_button_labels[index] = NULL;
+}
+
+static lv_coord_t relay_calc_button_size(ui_state_t *ui)
+{
+    if (ui == NULL || ui->relay_grid == NULL) {
+        return RELAY_MIN_BUTTON_SIZE;
+    }
+
+    lv_coord_t grid_width = lv_obj_get_width(ui->relay_grid);
+    if (grid_width <= 0 && ui->tab_relay != NULL) {
+        lv_obj_update_layout(ui->tab_relay);
+        grid_width = lv_obj_get_width(ui->relay_grid);
+        if (grid_width <= 0) {
+            grid_width = lv_obj_get_width(ui->tab_relay) * 92 / 100;
+        }
+    }
+
+    lv_coord_t spacing = lv_obj_get_style_pad_column(ui->relay_grid, LV_PART_MAIN);
+    if (spacing < 0) {
+        spacing = 0;
+    }
+
+    lv_coord_t button_size = (grid_width - spacing * (RELAY_COL_COUNT - 1)) / RELAY_COL_COUNT;
+    if (button_size < RELAY_MIN_BUTTON_SIZE) {
+        button_size = RELAY_MIN_BUTTON_SIZE;
+    }
+
+    return button_size;
 }
