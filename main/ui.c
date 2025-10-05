@@ -64,6 +64,26 @@ void ui_init(void) {
         ui->views[i] = NULL;
     }
 
+    ui->relay_config.count = 0;
+    ui->relay_config.container = NULL;
+    ui->relay_config.list = NULL;
+    ui->relay_config.add_btn = NULL;
+    ui->relay_config.remove_btn = NULL;
+    ui->relay_config.dropdown_updating = false;
+    for (size_t i = 0; i < UI_MAX_RELAY_BUTTONS; ++i) {
+        ui->relay_config.gpio_pins[i] = UI_RELAY_GPIO_UNASSIGNED;
+        ui->relay_config.rows[i] = NULL;
+        ui->relay_config.labels[i] = NULL;
+        ui->relay_config.dropdowns[i] = NULL;
+        ui->relay_button_text[i][0] = '\0';
+        ui->relay_buttons[i] = NULL;
+        ui->relay_button_labels[i] = NULL;
+        ui->relay_button_state[i] = false;
+    }
+    ui->relay_grid = NULL;
+    ui->relay_description = NULL;
+    ui->relay_refresh_in_progress = false;
+
     char default_ssid[33]; size_t ssid_len = sizeof(default_ssid);
     char default_pass[65]; size_t pass_len = sizeof(default_pass);
     uint8_t ap_enabled;

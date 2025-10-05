@@ -1,6 +1,7 @@
 #include "settings_panel.h"
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -8,6 +9,7 @@
 #include "config_storage.h"
 #include "config_server.h"
 #include "display.h"
+#include "ui/relay_panel.h"
 #include "esp_log.h"
 #include "esp_system.h"
 #include "esp_wifi.h"
@@ -36,6 +38,20 @@ static void screensaver_wake(ui_state_t *ui);
 
 static void relay_tab_checkbox_event_cb(lv_event_t *e);
 static void apply_relay_tab_state(ui_state_t *ui, bool enabled, bool update_checkbox);
+static void relay_config_add_btn_event_cb(lv_event_t *e);
+static void relay_config_remove_btn_event_cb(lv_event_t *e);
+static void relay_dropdown_event_cb(lv_event_t *e);
+static void relay_config_refresh_dropdowns(ui_state_t *ui);
+static void relay_config_update_controls(ui_state_t *ui);
+static uint8_t relay_config_find_first_available(ui_state_t *ui);
+static bool relay_config_pin_in_use(const ui_state_t *ui, uint8_t pin, size_t skip_index);
+static void relay_config_create_row(ui_state_t *ui, size_t index);
+static void relay_config_append_option(char *buf, size_t buf_len, const char *line);
+static void relay_config_append_gpio_option(char *buf, size_t buf_len, uint8_t pin);
+static uint8_t relay_config_parse_gpio_label(const char *label);
+
+static const uint8_t RELAY_GPIO_CHOICES[] = {5, 6, 7, 15, 16, 46, 9, 14};
+static const size_t RELAY_GPIO_COUNT = sizeof(RELAY_GPIO_CHOICES) / sizeof(RELAY_GPIO_CHOICES[0]);
 
 void ui_settings_panel_init(ui_state_t *ui,
                             const char *default_ssid,
@@ -249,7 +265,51 @@ void ui_settings_panel_init(ui_state_t *ui,
     lv_obj_align(ui->relay_checkbox, LV_ALIGN_TOP_LEFT, 8, 900);
     lv_obj_add_event_cb(ui->relay_checkbox, relay_tab_checkbox_event_cb, LV_EVENT_VALUE_CHANGED, ui);
 
+    lv_obj_t *relay_section = lv_obj_create(ui->tab_settings);
+    lv_obj_remove_style_all(relay_section);
+    lv_obj_set_width(relay_section, lv_pct(90));
+    lv_obj_set_height(relay_section, LV_SIZE_CONTENT);
+    lv_obj_align(relay_section, LV_ALIGN_TOP_LEFT, 8, 940);
+    lv_obj_set_layout(relay_section, LV_LAYOUT_FLEX);
+    lv_obj_set_flex_flow(relay_section, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_style_pad_gap(relay_section, 12, 0);
+    ui->relay_config.container = relay_section;
+
+    lv_obj_t *controls_row = lv_obj_create(relay_section);
+    lv_obj_remove_style_all(controls_row);
+    lv_obj_set_width(controls_row, lv_pct(100));
+    lv_obj_set_height(controls_row, LV_SIZE_CONTENT);
+    lv_obj_set_layout(controls_row, LV_LAYOUT_FLEX);
+    lv_obj_set_flex_flow(controls_row, LV_FLEX_FLOW_ROW);
+    lv_obj_set_style_pad_gap(controls_row, 12, 0);
+
+    ui->relay_config.add_btn = lv_btn_create(controls_row);
+    lv_obj_t *lbl_add = lv_label_create(ui->relay_config.add_btn);
+    lv_label_set_text(lbl_add, "+");
+    lv_obj_center(lbl_add);
+    lv_obj_add_event_cb(ui->relay_config.add_btn, relay_config_add_btn_event_cb, LV_EVENT_CLICKED, ui);
+
+    ui->relay_config.remove_btn = lv_btn_create(controls_row);
+    lv_obj_t *lbl_remove = lv_label_create(ui->relay_config.remove_btn);
+    lv_label_set_text(lbl_remove, "-");
+    lv_obj_center(lbl_remove);
+    lv_obj_add_event_cb(ui->relay_config.remove_btn, relay_config_remove_btn_event_cb, LV_EVENT_CLICKED, ui);
+
+    ui->relay_config.list = lv_obj_create(relay_section);
+    lv_obj_remove_style_all(ui->relay_config.list);
+    lv_obj_set_width(ui->relay_config.list, lv_pct(100));
+    lv_obj_set_height(ui->relay_config.list, LV_SIZE_CONTENT);
+    lv_obj_set_layout(ui->relay_config.list, LV_LAYOUT_FLEX);
+    lv_obj_set_flex_flow(ui->relay_config.list, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_style_pad_gap(ui->relay_config.list, 8, 0);
+
+    for (size_t i = 0; i < ui->relay_config.count; ++i) {
+        relay_config_create_row(ui, i);
+    }
+
     apply_relay_tab_state(ui, ui->relay_tab_enabled, true);
+    relay_config_refresh_dropdowns(ui);
+    relay_config_update_controls(ui);
 
     ui->screensaver.timer = lv_timer_create(screensaver_timer_cb,
                                             ui->screensaver.timeout * 1000,
@@ -467,6 +527,9 @@ static void apply_relay_tab_state(ui_state_t *ui, bool enabled, bool update_chec
             lv_obj_clear_state(ui->relay_checkbox, LV_STATE_CHECKED);
         }
     }
+
+    relay_config_update_controls(ui);
+    ui_relay_panel_refresh(ui);
 }
 
 static void save_key_btn_event_cb(lv_event_t *e)
@@ -636,4 +699,301 @@ static void screensaver_wake(ui_state_t *ui)
             ui->screensaver.active = false;
         }
     }
+}
+
+static void relay_config_add_btn_event_cb(lv_event_t *e)
+{
+    if (lv_event_get_code(e) != LV_EVENT_CLICKED) {
+        return;
+    }
+
+    ui_state_t *ui = lv_event_get_user_data(e);
+    if (ui == NULL) {
+        return;
+    }
+
+    if (ui->relay_config.count >= UI_MAX_RELAY_BUTTONS) {
+        return;
+    }
+
+    uint8_t pin = relay_config_find_first_available(ui);
+    if (pin == UI_RELAY_GPIO_UNASSIGNED) {
+        ESP_LOGW(TAG_SETTINGS, "No available GPIOs for relay buttons");
+        return;
+    }
+
+    size_t index = ui->relay_config.count;
+    ui->relay_config.count++;
+    ui->relay_config.gpio_pins[index] = pin;
+    ui->relay_button_state[index] = false;
+
+    relay_config_create_row(ui, index);
+    relay_config_refresh_dropdowns(ui);
+    relay_config_update_controls(ui);
+    ui_relay_panel_refresh(ui);
+}
+
+static void relay_config_remove_btn_event_cb(lv_event_t *e)
+{
+    if (lv_event_get_code(e) != LV_EVENT_CLICKED) {
+        return;
+    }
+
+    ui_state_t *ui = lv_event_get_user_data(e);
+    if (ui == NULL) {
+        return;
+    }
+
+    if (ui->relay_config.count == 0) {
+        return;
+    }
+
+    size_t index = ui->relay_config.count - 1;
+    if (ui->relay_config.rows[index] != NULL) {
+        lv_obj_del(ui->relay_config.rows[index]);
+    }
+
+    ui->relay_config.rows[index] = NULL;
+    ui->relay_config.labels[index] = NULL;
+    ui->relay_config.dropdowns[index] = NULL;
+    ui->relay_config.gpio_pins[index] = UI_RELAY_GPIO_UNASSIGNED;
+    ui->relay_button_state[index] = false;
+    ui->relay_config.count--;
+
+    relay_config_refresh_dropdowns(ui);
+    relay_config_update_controls(ui);
+    ui_relay_panel_refresh(ui);
+}
+
+static void relay_dropdown_event_cb(lv_event_t *e)
+{
+    if (lv_event_get_code(e) != LV_EVENT_VALUE_CHANGED) {
+        return;
+    }
+
+    ui_state_t *ui = lv_event_get_user_data(e);
+    if (ui == NULL || ui->relay_config.dropdown_updating) {
+        return;
+    }
+
+    lv_obj_t *dropdown = lv_event_get_target(e);
+    size_t index = UI_MAX_RELAY_BUTTONS;
+    for (size_t i = 0; i < ui->relay_config.count; ++i) {
+        if (ui->relay_config.dropdowns[i] == dropdown) {
+            index = i;
+            break;
+        }
+    }
+
+    if (index >= ui->relay_config.count) {
+        return;
+    }
+
+    char selected[16];
+    lv_dropdown_get_selected_str(dropdown, selected, sizeof(selected));
+    uint8_t pin = relay_config_parse_gpio_label(selected);
+    if (pin == UI_RELAY_GPIO_UNASSIGNED) {
+        return;
+    }
+
+    ui->relay_button_state[index] = false;
+    ui->relay_config.gpio_pins[index] = pin;
+    relay_config_refresh_dropdowns(ui);
+    relay_config_update_controls(ui);
+    ui_relay_panel_refresh(ui);
+}
+
+static void relay_config_refresh_dropdowns(ui_state_t *ui)
+{
+    if (ui == NULL) {
+        return;
+    }
+
+    if (ui->relay_config.dropdown_updating) {
+        return;
+    }
+
+    ui->relay_config.dropdown_updating = true;
+
+    for (size_t i = 0; i < ui->relay_config.count; ++i) {
+        lv_obj_t *dropdown = ui->relay_config.dropdowns[i];
+        if (dropdown == NULL) {
+            continue;
+        }
+
+        char options[256] = "";
+        uint8_t option_pins[UI_MAX_RELAY_BUTTONS] = {0};
+        size_t option_count = 0;
+        uint8_t current_pin = ui->relay_config.gpio_pins[i];
+
+        if (current_pin != UI_RELAY_GPIO_UNASSIGNED) {
+            relay_config_append_gpio_option(options, sizeof(options), current_pin);
+            option_pins[option_count++] = current_pin;
+        }
+
+        for (size_t choice = 0; choice < RELAY_GPIO_COUNT; ++choice) {
+            uint8_t candidate = RELAY_GPIO_CHOICES[choice];
+            if (candidate == current_pin) {
+                continue;
+            }
+            if (relay_config_pin_in_use(ui, candidate, i)) {
+                continue;
+            }
+            relay_config_append_gpio_option(options, sizeof(options), candidate);
+            if (option_count < UI_MAX_RELAY_BUTTONS) {
+                option_pins[option_count] = candidate;
+            }
+            option_count++;
+        }
+
+        if (option_count == 0) {
+            relay_config_append_option(options, sizeof(options), "None");
+            lv_dropdown_set_options(dropdown, options);
+            lv_dropdown_set_selected(dropdown, 0);
+            ui->relay_config.gpio_pins[i] = UI_RELAY_GPIO_UNASSIGNED;
+            ui->relay_button_state[i] = false;
+            continue;
+        }
+
+        lv_dropdown_set_options(dropdown, options);
+
+        size_t selected_idx = 0;
+        if (current_pin == UI_RELAY_GPIO_UNASSIGNED) {
+            ui->relay_config.gpio_pins[i] = option_pins[0];
+            ui->relay_button_state[i] = false;
+        }
+        lv_dropdown_set_selected(dropdown, selected_idx);
+    }
+
+    ui->relay_config.dropdown_updating = false;
+}
+
+static void relay_config_update_controls(ui_state_t *ui)
+{
+    if (ui == NULL) {
+        return;
+    }
+
+    bool can_add = false;
+    if (ui->relay_config.count < UI_MAX_RELAY_BUTTONS) {
+        can_add = relay_config_find_first_available(ui) != UI_RELAY_GPIO_UNASSIGNED;
+    }
+
+    if (ui->relay_config.add_btn != NULL) {
+        if (can_add) {
+            lv_obj_clear_state(ui->relay_config.add_btn, LV_STATE_DISABLED);
+        } else {
+            lv_obj_add_state(ui->relay_config.add_btn, LV_STATE_DISABLED);
+        }
+    }
+
+    bool can_remove = ui->relay_config.count > 0;
+    if (ui->relay_config.remove_btn != NULL) {
+        if (can_remove) {
+            lv_obj_clear_state(ui->relay_config.remove_btn, LV_STATE_DISABLED);
+        } else {
+            lv_obj_add_state(ui->relay_config.remove_btn, LV_STATE_DISABLED);
+        }
+    }
+}
+
+static uint8_t relay_config_find_first_available(ui_state_t *ui)
+{
+    for (size_t i = 0; i < RELAY_GPIO_COUNT; ++i) {
+        uint8_t pin = RELAY_GPIO_CHOICES[i];
+        if (!relay_config_pin_in_use(ui, pin, SIZE_MAX)) {
+            return pin;
+        }
+    }
+    return UI_RELAY_GPIO_UNASSIGNED;
+}
+
+static bool relay_config_pin_in_use(const ui_state_t *ui, uint8_t pin, size_t skip_index)
+{
+    if (ui == NULL || pin == UI_RELAY_GPIO_UNASSIGNED) {
+        return false;
+    }
+
+    for (size_t i = 0; i < ui->relay_config.count; ++i) {
+        if (i == skip_index) {
+            continue;
+        }
+        if (ui->relay_config.gpio_pins[i] == pin) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static void relay_config_create_row(ui_state_t *ui, size_t index)
+{
+    if (ui == NULL || ui->relay_config.list == NULL || index >= UI_MAX_RELAY_BUTTONS) {
+        return;
+    }
+
+    lv_obj_t *row = lv_obj_create(ui->relay_config.list);
+    lv_obj_remove_style_all(row);
+    lv_obj_set_width(row, lv_pct(100));
+    lv_obj_set_height(row, LV_SIZE_CONTENT);
+    lv_obj_set_layout(row, LV_LAYOUT_FLEX);
+    lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
+    lv_obj_set_style_pad_gap(row, 12, 0);
+    lv_obj_set_flex_align(row, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+
+    lv_obj_t *label = lv_label_create(row);
+    char caption[18];
+    snprintf(caption, sizeof(caption), "Button %u:", (unsigned)(index + 1));
+    lv_label_set_text(label, caption);
+
+    lv_obj_t *dropdown = lv_dropdown_create(row);
+    lv_obj_set_width(dropdown, 140);
+    lv_obj_add_event_cb(dropdown, relay_dropdown_event_cb, LV_EVENT_VALUE_CHANGED, ui);
+
+    ui->relay_config.rows[index] = row;
+    ui->relay_config.labels[index] = label;
+    ui->relay_config.dropdowns[index] = dropdown;
+}
+
+static void relay_config_append_option(char *buf, size_t buf_len, const char *line)
+{
+    if (buf == NULL || buf_len == 0 || line == NULL) {
+        return;
+    }
+
+    size_t len = strnlen(buf, buf_len);
+    if (len >= buf_len - 1) {
+        return;
+    }
+
+    if (len > 0) {
+        buf[len++] = '\n';
+        if (len >= buf_len - 1) {
+            buf[buf_len - 1] = '\0';
+            return;
+        }
+    }
+
+    snprintf(buf + len, buf_len - len, "%s", line);
+}
+
+static void relay_config_append_gpio_option(char *buf, size_t buf_len, uint8_t pin)
+{
+    char label[16];
+    snprintf(label, sizeof(label), "GPIO %u", (unsigned)pin);
+    relay_config_append_option(buf, buf_len, label);
+}
+
+static uint8_t relay_config_parse_gpio_label(const char *label)
+{
+    if (label == NULL) {
+        return UI_RELAY_GPIO_UNASSIGNED;
+    }
+
+    unsigned value = 0;
+    if (sscanf(label, "GPIO %u", &value) == 1) {
+        if (value <= UINT8_MAX) {
+            return (uint8_t)value;
+        }
+    }
+    return UI_RELAY_GPIO_UNASSIGNED;
 }

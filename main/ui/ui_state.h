@@ -9,6 +9,8 @@
 struct ui_device_view;
 
 #define UI_MAX_DEVICE_VIEWS 3
+#define UI_MAX_RELAY_BUTTONS 8
+#define UI_RELAY_GPIO_UNASSIGNED UINT8_MAX
 
 typedef struct {
     lv_style_t title;
@@ -35,6 +37,19 @@ typedef struct {
     lv_obj_t *spinbox_timeout;
 } ui_screensaver_state_t;
 
+typedef struct {
+    uint8_t count;
+    uint8_t gpio_pins[UI_MAX_RELAY_BUTTONS];
+    lv_obj_t *container;
+    lv_obj_t *list;
+    lv_obj_t *add_btn;
+    lv_obj_t *remove_btn;
+    lv_obj_t *rows[UI_MAX_RELAY_BUTTONS];
+    lv_obj_t *labels[UI_MAX_RELAY_BUTTONS];
+    lv_obj_t *dropdowns[UI_MAX_RELAY_BUTTONS];
+    bool dropdown_updating;
+} ui_relay_config_t;
+
 typedef struct ui_state {
     lv_obj_t *tabview;
     lv_obj_t *tab_live;
@@ -58,6 +73,14 @@ typedef struct ui_state {
     uint16_t tab_settings_index;
     uint16_t tab_relay_index;
     bool relay_tab_enabled;
+    ui_relay_config_t relay_config;
+    lv_obj_t *relay_grid;
+    lv_obj_t *relay_description;
+    lv_obj_t *relay_buttons[UI_MAX_RELAY_BUTTONS];
+    lv_obj_t *relay_button_labels[UI_MAX_RELAY_BUTTONS];
+    char relay_button_text[UI_MAX_RELAY_BUTTONS][20];
+    bool relay_button_state[UI_MAX_RELAY_BUTTONS];
+    bool relay_refresh_in_progress;
 } ui_state_t;
 
 #endif /* UI_UI_STATE_H */
