@@ -6,6 +6,8 @@
 #include <stdint.h>
 #include <stdbool.h> // <-- Add this line
 
+#define DEFAULT_AP_PASSWORD "12345678"
+
 // brightness settings
 esp_err_t load_brightness(uint8_t *brightness_out);
 esp_err_t save_brightness(uint8_t brightness);

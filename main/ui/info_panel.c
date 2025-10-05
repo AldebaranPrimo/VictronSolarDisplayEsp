@@ -21,6 +21,7 @@ static const char *APP_VERSION = "1.1.1";
 static void ta_event_cb(lv_event_t *e);
 static void wifi_event_cb(lv_event_t *e);
 static void ap_checkbox_event_cb(lv_event_t *e);
+static void password_toggle_btn_event_cb(lv_event_t *e);
 static void save_key_btn_event_cb(lv_event_t *e);
 static void reboot_btn_event_cb(lv_event_t *e);
 static void brightness_slider_event_cb(lv_event_t *e);
@@ -68,17 +69,28 @@ void ui_info_panel_init(ui_state_t *ui,
     lv_label_set_text(lbl_pass, "AP Password:");
     lv_obj_align(lbl_pass, LV_ALIGN_TOP_LEFT, 8, 90);
 
+    const char *ap_password = (default_pass && default_pass[0] != '\0') ? default_pass : DEFAULT_AP_PASSWORD;
+
     ui->wifi.password = lv_textarea_create(ui->tab_info);
     lv_textarea_set_password_mode(ui->wifi.password, true);
     lv_textarea_set_one_line(ui->wifi.password, true);
     lv_obj_set_width(ui->wifi.password, lv_pct(80));
-    lv_textarea_set_text(ui->wifi.password, default_pass);
+    lv_textarea_set_text(ui->wifi.password, ap_password);
     lv_obj_align(ui->wifi.password, LV_ALIGN_TOP_LEFT, 8, 120);
     lv_obj_add_event_cb(ui->wifi.password, ta_event_cb, LV_EVENT_FOCUSED, ui);
     lv_obj_add_event_cb(ui->wifi.password, ta_event_cb, LV_EVENT_DEFOCUSED, ui);
     lv_obj_add_event_cb(ui->wifi.password, ta_event_cb, LV_EVENT_CANCEL, ui);
     lv_obj_add_event_cb(ui->wifi.password, ta_event_cb, LV_EVENT_READY, ui);
     lv_obj_add_event_cb(ui->wifi.password, wifi_event_cb, LV_EVENT_VALUE_CHANGED, ui);
+
+    ui->wifi.password_toggle = lv_btn_create(ui->tab_info);
+    lv_obj_align(ui->wifi.password_toggle, LV_ALIGN_TOP_LEFT, 240, 180);
+    lv_obj_set_width(ui->wifi.password_toggle, lv_pct(15));
+    lv_obj_add_event_cb(ui->wifi.password_toggle, password_toggle_btn_event_cb, LV_EVENT_CLICKED, ui);
+
+    lv_obj_t *lbl_toggle = lv_label_create(ui->wifi.password_toggle);
+    lv_label_set_text(lbl_toggle, "Show");
+    lv_obj_center(lbl_toggle);
 
     ui->wifi.ap_enable = lv_checkbox_create(ui->tab_info);
     lv_checkbox_set_text(ui->wifi.ap_enable, "Enable AP");
@@ -287,6 +299,27 @@ static void wifi_event_cb(lv_event_t *e)
         ESP_LOGI(TAG_INFO, "Wi-Fi config saved");
     } else {
         ESP_LOGE(TAG_INFO, "nvs_open failed: %s", esp_err_to_name(err));
+    }
+}
+
+static void password_toggle_btn_event_cb(lv_event_t *e)
+{
+    ui_state_t *ui = lv_event_get_user_data(e);
+    if (ui == NULL || ui->wifi.password == NULL) {
+        return;
+    }
+
+    if (lv_event_get_code(e) != LV_EVENT_CLICKED) {
+        return;
+    }
+
+    bool new_mode = !lv_textarea_get_password_mode(ui->wifi.password);
+    lv_textarea_set_password_mode(ui->wifi.password, new_mode);
+
+    lv_obj_t *btn = lv_event_get_target(e);
+    lv_obj_t *label = lv_obj_get_child(btn, 0);
+    if (label != NULL) {
+        lv_label_set_text(label, new_mode ? "Show" : "Hide");
     }
 }
 

@@ -48,11 +48,18 @@ void ui_init(void) {
     char default_ssid[33]; size_t ssid_len = sizeof(default_ssid);
     char default_pass[65]; size_t pass_len = sizeof(default_pass);
     uint8_t ap_enabled;
-    if (load_wifi_config(default_ssid, &ssid_len, default_pass, &pass_len, &ap_enabled) != ESP_OK) {
+    esp_err_t wifi_err = load_wifi_config(default_ssid, &ssid_len, default_pass, &pass_len, &ap_enabled);
+    if (wifi_err != ESP_OK) {
         strncpy(default_ssid, "VictronConfig", sizeof(default_ssid));
         default_ssid[sizeof(default_ssid) - 1] = '\0';
-        default_pass[0] = '\0';
+        strncpy(default_pass, DEFAULT_AP_PASSWORD, sizeof(default_pass));
+        default_pass[sizeof(default_pass) - 1] = '\0';
         ap_enabled = 1;
+        save_wifi_config(default_ssid, default_pass, ap_enabled);
+    } else if (default_pass[0] == '\0') {
+        strncpy(default_pass, DEFAULT_AP_PASSWORD, sizeof(default_pass));
+        default_pass[sizeof(default_pass) - 1] = '\0';
+        save_wifi_config(default_ssid, default_pass, ap_enabled);
     }
 
     load_screensaver_settings(&ui->screensaver.enabled,

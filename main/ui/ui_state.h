@@ -21,6 +21,7 @@ typedef struct {
     lv_obj_t *ssid;
     lv_obj_t *password;
     lv_obj_t *ap_enable;
+    lv_obj_t *password_toggle;
 } ui_wifi_controls_t;
 
 typedef struct {
