@@ -3,8 +3,6 @@ file(GLOB SOURCES "*.c" "ui/*.c")
 idf_component_register(
     SRCS       ${SOURCES}
     INCLUDE_DIRS "."
-    REQUIRES
-        victron_display_bsp
     PRIV_REQUIRES
         dns_server
         esp_netif 
@@ -23,4 +21,5 @@ idf_component_register(
 
 target_compile_definitions(${COMPONENT_LIB} PRIVATE
     LOG_LOCAL_LEVEL=ESP_LOG_VERBOSE
+    LV_LVGL_H_INCLUDE_SIMPLE
 )
