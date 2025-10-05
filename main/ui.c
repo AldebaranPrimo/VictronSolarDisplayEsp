@@ -33,6 +33,21 @@ static void tabview_touch_event_cb(lv_event_t *e);
 static void ensure_device_layout(ui_state_t *ui, victron_device_type_t type);
 static const char *device_type_name(victron_device_type_t type);
 
+static bool obj_is_descendant(const lv_obj_t *obj, const lv_obj_t *parent)
+{
+    if (obj == NULL || parent == NULL) {
+        return false;
+    }
+    const lv_obj_t *current = obj;
+    while (current != NULL) {
+        if (current == parent) {
+            return true;
+        }
+        current = lv_obj_get_parent(current);
+    }
+    return false;
+}
+
 void ui_init(void) {
     ui_state_t *ui = &g_ui;
 
@@ -216,5 +231,45 @@ static const char *device_type_name(victron_device_type_t type)
 
 static void tabview_touch_event_cb(lv_event_t *e) {
     ui_state_t *ui = lv_event_get_user_data(e);
+    if (ui == NULL) {
+        return;
+    }
+
     ui_info_panel_on_user_activity(ui);
+
+    lv_event_code_t code = lv_event_get_code(e);
+    if (code != LV_EVENT_PRESSED || ui->keyboard == NULL) {
+        return;
+    }
+
+    if (lv_obj_has_flag(ui->keyboard, LV_OBJ_FLAG_HIDDEN)) {
+        return;
+    }
+
+    lv_obj_t *target = lv_event_get_target(e);
+    if (obj_is_descendant(target, ui->keyboard)) {
+        return;
+    }
+
+    if (ui->wifi.password_toggle != NULL &&
+        obj_is_descendant(target, ui->wifi.password_toggle)) {
+        return;
+    }
+
+    lv_obj_t *ta = lv_keyboard_get_textarea(ui->keyboard);
+    if (obj_is_descendant(target, ta)) {
+        return;
+    }
+
+    if (ta != NULL) {
+        lv_obj_clear_state(ta, LV_STATE_FOCUSED);
+        lv_event_send(ta, LV_EVENT_DEFOCUSED, NULL);
+    } else {
+        lv_keyboard_set_textarea(ui->keyboard, NULL);
+        lv_obj_add_flag(ui->keyboard, LV_OBJ_FLAG_HIDDEN);
+        lv_disp_t *disp = lv_disp_get_default();
+        lv_coord_t screen_h = disp ? lv_disp_get_ver_res(disp) : LV_VER_RES;
+        lv_obj_set_height(ui->tabview, screen_h);
+        lv_obj_update_layout(ui->tabview);
+    }
 }

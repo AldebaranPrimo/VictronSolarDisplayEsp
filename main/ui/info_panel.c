@@ -272,9 +272,29 @@ static void ta_event_cb(lv_event_t *e)
         lv_keyboard_set_textarea(ui->keyboard, ta);
         lv_obj_move_foreground(ui->keyboard);
         lv_obj_clear_flag(ui->keyboard, LV_OBJ_FLAG_HIDDEN);
+        lv_disp_t *disp = lv_disp_get_default();
+        lv_coord_t screen_h = disp ? lv_disp_get_ver_res(disp) : LV_VER_RES;
+        lv_coord_t kb_height = lv_obj_get_height(ui->keyboard);
+        lv_coord_t available_h = screen_h - kb_height;
+        if (available_h < screen_h / 3) {
+            available_h = screen_h / 3;
+        }
+        lv_obj_update_layout(ui->tabview);
+        lv_obj_set_height(ui->tabview, available_h);
+        lv_obj_update_layout(ui->tabview);
+        lv_obj_scroll_to_view_recursive(ta, LV_ANIM_OFF);
     } else if (code == LV_EVENT_DEFOCUSED || code == LV_EVENT_CANCEL || code == LV_EVENT_READY) {
+        if (ta == NULL) {
+            return;
+        }
+        lv_obj_clear_state(ta, LV_STATE_FOCUSED);
         lv_keyboard_set_textarea(ui->keyboard, NULL);
         lv_obj_add_flag(ui->keyboard, LV_OBJ_FLAG_HIDDEN);
+        lv_disp_t *disp = lv_disp_get_default();
+        lv_coord_t screen_h = disp ? lv_disp_get_ver_res(disp) : LV_VER_RES;
+        lv_obj_set_height(ui->tabview, screen_h);
+        lv_obj_update_layout(ui->tabview);
+        lv_indev_reset(NULL, ta);
     }
 }
 
