@@ -7,7 +7,7 @@ An ESP32-S3-based solar panel monitor that displays real-time data from a Victro
 ---
 ## Screenshots
 
-Below are screenshots of the device UI, showing both the Live tab and various Info tab configuration screens:
+Below are screenshots of the device UI, showing both the Live tab and various Settings tab configuration screens:
 
 <p align="center">
   <img src="docs/images/victrondata.png" alt="Live Tab: Victron Data Overview" width="260" style="margin: 0 12px; display: inline-block;"/>
@@ -16,21 +16,21 @@ Below are screenshots of the device UI, showing both the Live tab and various In
 </p>
 
 <p align="center">
-  <img src="docs/images/ap-config.png" alt="Info Tab: AP Config" width="260" style="margin: 0 12px; display: inline-block;"/>
+  <img src="docs/images/ap-config.png" alt="Settings Tab: AP Config" width="260" style="margin: 0 12px; display: inline-block;"/>
   <br/>
-  <b>Info Tab – AP Config:</b> Configure the Wi-Fi AP SSID, password, and enable/disable the access point.
+  <b>Settings Tab – AP Config:</b> Configure the Wi-Fi AP SSID, password, and enable/disable the access point.
 </p>
 
 <p align="center">
-  <img src="docs/images/screensaver.png" alt="Info Tab: Screensaver Settings" width="260" style="margin: 0 12px; display: inline-block;"/>
+  <img src="docs/images/screensaver.png" alt="Settings Tab: Screensaver Settings" width="260" style="margin: 0 12px; display: inline-block;"/>
   <br/>
-  <b>Info Tab – Screensaver:</b> Adjust screensaver enable, brightness, and timeout settings.
+  <b>Settings Tab – Screensaver:</b> Adjust screensaver enable, brightness, and timeout settings.
 </p>
 
 <p align="center">
-  <img src="docs/images/mac-and-aes.png" alt="Info Tab: MAC and AES Key" width="260" style="margin: 0 12px; display: inline-block;"/>
+  <img src="docs/images/mac-and-aes.png" alt="Settings Tab: MAC and AES Key" width="260" style="margin: 0 12px; display: inline-block;"/>
   <br/>
-  <b>Info Tab – MAC & AES Key:</b> View and edit the AES key and see the current BLE MAC address. Save or reboot from here.
+  <b>Settings Tab – MAC & AES Key:</b> View and edit the AES key and see the current BLE MAC address. Save or reboot from here.
 </p>
 
 -------
@@ -53,7 +53,7 @@ Below are screenshots of the device UI, showing both the Live tab and various In
 
 - **On‑Device Configuration**
   - **Web Interface:** Creates a Wi‑Fi SoftAP (`VictronConfig`) on boot. Hosts a web page (SPIFFS) for entering a new AES key.
-  - **On-Device UI:** The Info tab allows direct entry and saving of the AES key and displays the current key and BLE MAC address.
+  - **On-Device UI:** The Settings tab allows direct entry and saving of the AES key and displays the current key and BLE MAC address.
   - All configuration is stored persistently in NVS.
 
 - **Persistent Storage**
@@ -101,7 +101,7 @@ VictronSolarDisplayEsp/
       ├─ view_solar.c       # Solar charger layout & update logic
       ├─ view_battery.c     # Battery monitor layout & update logic
       ├─ view_registry.c    # Factory registry for victron_device_type_t
-      ├─ info_panel.c       # Info-tab widgets and event handlers
+      ├─ settings_panel.c   # Settings-tab widgets and event handlers
       ├─ ui_state.h         # Shared UI state struct
       └─ ui_format.c        # Common label formatting helpers
    ├─ display.h/.c          # LCD BSP interaction
@@ -126,7 +126,7 @@ The UI is now modular: each device view lives in `main/ui/` and is registered by
 
 3. **Register the View**
    - Add an entry to `main/ui/view_registry.c` mapping your new `victron_device_type_t` to the module’s factory function and display name.
-   - If the device should appear with a specific label in the Info tab, also update `ui_info_panel_init()` as needed.
+   - If the device should appear with a specific label in the Settings tab, also update `ui_settings_panel_init()` as needed.
 
 4. **Expose Shared State**
    - If the view requires additional shared UI state, extend `ui_state_t` in `main/ui/ui_state.h` and initialise it in `ui_init()`.
@@ -166,7 +166,7 @@ Following this flow keeps `ui.c` untouched and ensures each device type remains 
    - On first boot, the device sets up a SoftAP `VictronConfig` (no password). Connect to it.
    - **Captive Portal:** When you connect with an Android or iPhone, a popup will automatically appear, directing you to the configuration page (index.html). This makes setup fast and easy—no need to manually enter the IP address!
    - You can also browse to [http://192.168.4.1/](http://192.168.4.1/) to configure the AES key via web UI.
-   - Alternatively, use the Info tab on the device to enter and save the AES key.
+   - Alternatively, use the Settings tab on the device to enter and save the AES key.
    - After saving, the device reboots and begins displaying live BLE data.
 
 ---
@@ -199,9 +199,9 @@ python convert-framebuffer.py framebuffer.raw output.png
   `4B7178E64C828A262CDD5161E3404B7A`
 - **To change the AES key:**
   - Connect to the AP, enter a new 32-character hex string in the web UI, and click **Save**.
-  - Or, use the Info tab on the device, enter the new key, and press **Save**.
+  - Or, use the Settings tab on the device, enter the new key, and press **Save**.
 - **Other settings:**
-  - Wi-Fi SSID, password, and AP enable/disable can be configured from the Info tab.
+  - Wi-Fi SSID, password, and AP enable/disable can be configured from the Settings tab.
   - Display brightness is adjustable and persists across reboots.
 
 ---
@@ -215,7 +215,7 @@ python convert-framebuffer.py framebuffer.raw output.png
 
 ---
 
-## Device UI (Info Tab)
+## Device UI (Settings Tab)
 
 - **AP SSID / Password:** Configure Wi-Fi AP settings.
 - **Enable AP:** Checkbox to enable/disable the SoftAP.
