@@ -14,7 +14,8 @@
 #include "ui/ui_state.h"
 #include "ui/device_view.h"
 #include "ui/view_registry.h"
-#include "ui/info_panel.h"
+#include "ui/settings_panel.h"
+#include "ui/relay_panel.h"
 
 // Font Awesome symbols (declared in main.c)
 LV_FONT_DECLARE(font_awesome_solar_panel_40);
@@ -26,6 +27,9 @@ static ui_state_t g_ui = {
     .brightness = 100,
     .current_device_type = VICTRON_DEVICE_TYPE_UNKNOWN,
     .has_received_data = false,
+    .tab_settings_index = UINT16_MAX,
+    .tab_relay_index = UINT16_MAX,
+    .relay_tab_enabled = true,
 };
 
 // Forward declarations
@@ -60,6 +64,52 @@ void ui_init(void) {
         ui->views[i] = NULL;
     }
 
+    ui->relay_config.count = 0;
+    ui->relay_config.container = NULL;
+    ui->relay_config.list = NULL;
+    ui->relay_config.add_btn = NULL;
+    ui->relay_config.remove_btn = NULL;
+    ui->relay_config.dropdown_updating = false;
+    for (size_t i = 0; i < UI_MAX_RELAY_BUTTONS; ++i) {
+        ui->relay_config.gpio_pins[i] = UI_RELAY_GPIO_UNASSIGNED;
+        ui->relay_config.rows[i] = NULL;
+        ui->relay_config.labels[i] = NULL;
+        ui->relay_config.dropdowns[i] = NULL;
+        ui->relay_button_text[i][0] = '\0';
+        ui->relay_buttons[i] = NULL;
+        ui->relay_button_labels[i] = NULL;
+        ui->relay_button_state[i] = false;
+    }
+    ui->relay_grid = NULL;
+    ui->relay_description = NULL;
+    ui->relay_refresh_in_progress = false;
+
+    bool relay_enabled = ui->relay_tab_enabled;
+    uint8_t saved_count = 0;
+    uint8_t saved_pins[UI_MAX_RELAY_BUTTONS];
+    for (size_t i = 0; i < UI_MAX_RELAY_BUTTONS; ++i) {
+        saved_pins[i] = UI_RELAY_GPIO_UNASSIGNED;
+    }
+
+    esp_err_t relay_err = load_relay_config(&relay_enabled,
+                                            &saved_count,
+                                            saved_pins,
+                                            UI_MAX_RELAY_BUTTONS);
+    if (relay_err == ESP_OK) {
+        if (saved_count > UI_MAX_RELAY_BUTTONS) {
+            saved_count = UI_MAX_RELAY_BUTTONS;
+        }
+        ui->relay_tab_enabled = relay_enabled;
+        ui->relay_config.count = saved_count;
+        for (size_t i = 0; i < UI_MAX_RELAY_BUTTONS; ++i) {
+            ui->relay_config.gpio_pins[i] = (i < saved_count)
+                ? saved_pins[i]
+                : UI_RELAY_GPIO_UNASSIGNED;
+        }
+    } else {
+        ui->relay_tab_enabled = true;
+    }
+
     char default_ssid[33]; size_t ssid_len = sizeof(default_ssid);
     char default_pass[65]; size_t pass_len = sizeof(default_pass);
     uint8_t ap_enabled;
@@ -90,17 +140,25 @@ void ui_init(void) {
     );
 #endif
 
-    ui->tabview  = lv_tabview_create(lv_scr_act(), LV_DIR_TOP, 32);
-    ui->tab_live = lv_tabview_add_tab(ui->tabview, "Live");
-    ui->tab_info = lv_tabview_add_tab(ui->tabview, "Info");
+    ui->tabview   = lv_tabview_create(lv_scr_act(), LV_DIR_TOP, 32);
+    ui->tab_live  = lv_tabview_add_tab(ui->tabview, "Live");
+    ui->tab_settings = lv_tabview_add_tab(ui->tabview, "Settings");
+    ui->tab_relay = lv_tabview_add_tab(ui->tabview, "Relay");
+
+    ui->tab_settings_index = lv_obj_get_index(ui->tab_settings);
+    ui->tab_relay_index = lv_obj_get_index(ui->tab_relay);
 
     lv_obj_add_event_cb(ui->tab_live, tabview_touch_event_cb, LV_EVENT_PRESSED, ui);
     lv_obj_add_event_cb(ui->tab_live, tabview_touch_event_cb, LV_EVENT_CLICKED, ui);
     lv_obj_add_event_cb(ui->tab_live, tabview_touch_event_cb, LV_EVENT_GESTURE, ui);
 
-    lv_obj_add_event_cb(ui->tab_info, tabview_touch_event_cb, LV_EVENT_PRESSED, ui);
-    lv_obj_add_event_cb(ui->tab_info, tabview_touch_event_cb, LV_EVENT_CLICKED, ui);
-    lv_obj_add_event_cb(ui->tab_info, tabview_touch_event_cb, LV_EVENT_GESTURE, ui);
+    lv_obj_add_event_cb(ui->tab_settings, tabview_touch_event_cb, LV_EVENT_PRESSED, ui);
+    lv_obj_add_event_cb(ui->tab_settings, tabview_touch_event_cb, LV_EVENT_CLICKED, ui);
+    lv_obj_add_event_cb(ui->tab_settings, tabview_touch_event_cb, LV_EVENT_GESTURE, ui);
+
+    lv_obj_add_event_cb(ui->tab_relay, tabview_touch_event_cb, LV_EVENT_PRESSED, ui);
+    lv_obj_add_event_cb(ui->tab_relay, tabview_touch_event_cb, LV_EVENT_CLICKED, ui);
+    lv_obj_add_event_cb(ui->tab_relay, tabview_touch_event_cb, LV_EVENT_GESTURE, ui);
 
     ui->keyboard = lv_keyboard_create(lv_layer_top());
     lv_obj_set_size(ui->keyboard, LV_HOR_RES, LV_VER_RES/2);
@@ -136,7 +194,8 @@ void ui_init(void) {
     lv_obj_set_style_text_align(ui->lbl_no_data, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_center(ui->lbl_no_data);
 
-    ui_info_panel_init(ui, default_ssid, default_pass, ap_enabled);
+    ui_settings_panel_init(ui, default_ssid, default_pass, ap_enabled);
+    ui_relay_panel_init(ui);
 
     lv_obj_add_event_cb(lv_scr_act(), tabview_touch_event_cb, LV_EVENT_PRESSED, ui);
     lv_obj_add_event_cb(lv_scr_act(), tabview_touch_event_cb, LV_EVENT_CLICKED, ui);
@@ -193,7 +252,7 @@ void ui_set_ble_mac(const uint8_t *mac) {
              mac[5], mac[4], mac[3], mac[2], mac[1], mac[0]);
     ui_state_t *ui = &g_ui;
     lvgl_port_lock(0);
-    ui_info_panel_set_mac(ui, mac_str);
+    ui_settings_panel_set_mac(ui, mac_str);
     lvgl_port_unlock();
 }
 
@@ -235,7 +294,7 @@ static void tabview_touch_event_cb(lv_event_t *e) {
         return;
     }
 
-    ui_info_panel_on_user_activity(ui);
+    ui_settings_panel_on_user_activity(ui);
 
     lv_event_code_t code = lv_event_get_code(e);
     if (code != LV_EVENT_PRESSED || ui->keyboard == NULL) {

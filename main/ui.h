@@ -11,7 +11,7 @@ extern "C" {
 #endif
 
 /**
- * Initialize all LVGL UI elements, including Live and Info tabs.
+ * Initialize all LVGL UI elements, including Live, Settings, and Relay tabs.
  */
 void ui_init(void);
 
