@@ -22,6 +22,11 @@ void ui_init(void);
 void ui_on_panel_data(const victron_data_t *d);
 void ui_set_ble_mac(const uint8_t *mac);
 
+/* Notify the UI that the user performed an activity (e.g. touch).
+ * This will reset the screensaver timer and restore brightness if active.
+ */
+void ui_notify_user_activity(void);
+
 #ifdef __cplusplus
 }
 #endif

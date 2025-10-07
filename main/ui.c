@@ -177,7 +177,12 @@ void ui_init(void) {
 
     // Styles
     lv_style_init(&ui->styles.title);
+    /* Use montserrat 22 for titles as requested */
+#if LV_FONT_MONTSERRAT_22
+    lv_style_set_text_font(&ui->styles.title, &lv_font_montserrat_22);
+#else
     lv_style_set_text_font(&ui->styles.title, &lv_font_montserrat_16);
+#endif
     lv_style_set_text_color(&ui->styles.title, lv_color_white());
 
     lv_style_init(&ui->styles.medium);
@@ -189,7 +194,9 @@ void ui_init(void) {
     lv_style_set_text_color(&ui->styles.big, lv_color_white());
 
     lv_style_init(&ui->styles.value);
-#if LV_FONT_MONTSERRAT_30
+#if LV_FONT_MONTSERRAT_32
+    lv_style_set_text_font(&ui->styles.value, &lv_font_montserrat_32);
+#elif LV_FONT_MONTSERRAT_30
     lv_style_set_text_font(&ui->styles.value, &lv_font_montserrat_30);
 #else
     lv_style_set_text_font(&ui->styles.value, LV_FONT_DEFAULT);
@@ -254,6 +261,12 @@ void ui_on_panel_data(const victron_data_t *d) {
     lvgl_port_unlock();
 }
 
+void ui_notify_user_activity(void)
+{
+    ui_state_t *ui = &g_ui;
+    ui_settings_panel_on_user_activity(ui);
+}
+
 void ui_set_ble_mac(const uint8_t *mac) {
     // Format MAC as "XX:XX:XX:XX:XX:XX"
     char mac_str[18];
@@ -303,8 +316,6 @@ static void tabview_touch_event_cb(lv_event_t *e) {
     if (ui == NULL) {
         return;
     }
-
-    ui_settings_panel_on_user_activity(ui);
 
     lv_event_code_t code = lv_event_get_code(e);
     if (code != LV_EVENT_PRESSED || ui->keyboard == NULL) {

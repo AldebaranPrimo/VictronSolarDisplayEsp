@@ -61,12 +61,12 @@ static lv_obj_t *create_label_box(ui_state_t *ui, lv_obj_t *parent,
 
     lv_obj_t *header = lv_label_create(box);
     lv_label_set_text(header, desc->title ? desc->title : "");
-    lv_obj_add_style(header, &ui->styles.title, 0);
+    lv_obj_add_style(header, &ui->styles.medium, 0);
     lv_obj_align(header, LV_ALIGN_TOP_MID, 0, 0);
 
     lv_obj_t *value = lv_label_create(box);
     lv_label_set_text(value, "--");
-    lv_obj_add_style(value, &ui->styles.value, 0);
+    lv_obj_add_style(value, &ui->styles.medium, 0);
     lv_obj_align(value, LV_ALIGN_CENTER, 0, 10);
 
     return value;
@@ -122,7 +122,7 @@ ui_device_view_t *ui_solar_view_create(ui_state_t *ui, lv_obj_t *parent)
                           LV_FLEX_ALIGN_CENTER,
                           LV_FLEX_ALIGN_CENTER);
     lv_obj_clear_flag(view->row_primary, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_set_style_bg_color(view->row_primary, lv_color_hex(0x223355), 0);
+    // lv_obj_set_style_bg_color(view->row_primary, lv_color_hex(0x223355), 0);
     lv_obj_set_style_border_width(view->row_primary, 0, 0);
     lv_obj_set_style_outline_width(view->row_primary, 0, 0);
 

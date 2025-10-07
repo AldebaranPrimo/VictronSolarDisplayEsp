@@ -126,7 +126,7 @@ void ui_settings_panel_init(ui_state_t *ui,
     ui->lbl_error = lv_label_create(ui->tab_settings);
     lv_obj_add_style(ui->lbl_error, &ui->styles.title, 0);
     lv_label_set_text(ui->lbl_error, "Err: 0");
-    lv_obj_align(ui->lbl_error, LV_ALIGN_TOP_LEFT, 240, 820);
+    lv_obj_align(ui->lbl_error, LV_ALIGN_TOP_LEFT, 320, 820);
 
     ui->lbl_device_type = lv_label_create(ui->tab_settings);
     lv_obj_add_style(ui->lbl_device_type, &ui->styles.title, 0);
