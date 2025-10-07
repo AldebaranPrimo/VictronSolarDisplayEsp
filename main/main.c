@@ -14,6 +14,7 @@
 #include "ui.h"
 #include "config_server.h"
 #include "esp_timer.h"
+#include "nvs_flash.h"
 
 static const char *TAG = "VICTRON_LVGL_APP";
 #define logSection(section) ESP_LOGI(TAG, "\n\n***** %s *****\n", section)
@@ -80,6 +81,13 @@ void setup(void) {
 
     /* --- Lock LVGL port and initialize UI --- */
     lvgl_port_lock(0);
+    /* Initialize NVS early so UI and modules can read/write persisted settings */
+    esp_err_t _nvs_err = nvs_flash_init();
+    if (_nvs_err == ESP_ERR_NVS_NO_FREE_PAGES || _nvs_err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+        ESP_ERROR_CHECK(nvs_flash_erase());
+        _nvs_err = nvs_flash_init();
+    }
+    ESP_ERROR_CHECK(_nvs_err);
     ui_init();
 
     /* --- Start Wi-Fi AP & config server --- */

@@ -188,14 +188,22 @@ void ui_settings_panel_init(ui_state_t *ui,
     lv_obj_center(lbl_reboot);
     lv_obj_add_event_cb(btn_reboot, reboot_btn_event_cb, LV_EVENT_CLICKED, ui);
 
-    // Load stored debug flag from NVS
+    // Create Victron debug checkbox and load stored debug flag from NVS
+    ui->victron_debug_checkbox = lv_checkbox_create(ui->tab_settings);
+    lv_checkbox_set_text(ui->victron_debug_checkbox, "Enable Victron BLE Debug");
+    lv_obj_add_style(ui->victron_debug_checkbox, &ui->styles.medium, 0);
+    lv_obj_align(ui->victron_debug_checkbox, LV_ALIGN_TOP_LEFT, 8, 870);
+    lv_obj_add_event_cb(ui->victron_debug_checkbox, victron_debug_event_cb, LV_EVENT_VALUE_CHANGED, ui);
+
     bool dbg = false;
     if (load_victron_debug(&dbg) == ESP_OK) {
         ui->victron_debug_enabled = dbg;
-        if (dbg) lv_obj_add_state(ui->victron_debug_checkbox, LV_STATE_CHECKED);
+        if (dbg && ui->victron_debug_checkbox) lv_obj_add_state(ui->victron_debug_checkbox, LV_STATE_CHECKED);
     } else {
         ui->victron_debug_enabled = false;
     }
+    // Ensure BLE module matches persisted UI setting
+    victron_ble_set_debug(ui->victron_debug_enabled);
 
     lv_obj_t *lbl_brightness = lv_label_create(ui->tab_settings);
     lv_obj_add_style(lbl_brightness, &ui->styles.title, 0);
@@ -266,12 +274,7 @@ void ui_settings_panel_init(ui_state_t *ui,
     lv_obj_set_style_bg_img_src(btn_inc, LV_SYMBOL_PLUS, 0);
     lv_obj_add_event_cb(btn_inc, spinbox_ss_time_increment_event_cb, LV_EVENT_ALL, ui);
 
-    // Victron BLE Debug checkbox (Debug section)
-    ui->victron_debug_checkbox = lv_checkbox_create(ui->tab_settings);
-    lv_checkbox_set_text(ui->victron_debug_checkbox, "Enable Victron BLE Debug");
-    lv_obj_add_style(ui->victron_debug_checkbox, &ui->styles.medium, 0);
-    lv_obj_align(ui->victron_debug_checkbox, LV_ALIGN_TOP_LEFT, 8, 870);
-    lv_obj_add_event_cb(ui->victron_debug_checkbox, victron_debug_event_cb, LV_EVENT_VALUE_CHANGED, ui);
+    // Debug checkbox already created earlier and initialized; don't recreate it here.
 
     lv_obj_t *lbl_relay_tab = lv_label_create(ui->tab_settings);
     lv_obj_add_style(lbl_relay_tab, &ui->styles.title, 0);

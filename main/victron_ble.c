@@ -17,6 +17,9 @@ static const char *TAG = "victron_ble";
 // runtime debug flag controlled from UI
 static bool victron_debug_enabled = false;
 
+// Packet-level debug logging macro. Keeps error/warning/info unrelated to
+// individual incoming packets intact while allowing the UI checkbox to
+// enable/disable verbose packet dumps and parsed-field logs.
 #define VDBG(fmt, ...) do { if (victron_debug_enabled) ESP_LOGI(TAG, fmt, ##__VA_ARGS__); } while(0)
 
 // NA (Not Available) values per spec
@@ -82,13 +85,6 @@ void victron_ble_init(void) {
     nimble_port_init();
     ble_hs_cfg.sync_cb = ble_app_on_sync;
     nimble_port_freertos_init(ble_host_task);
-
-    // Load persisted debug flag (if available)
-    bool dbg = false;
-    if (load_victron_debug(&dbg) == ESP_OK) {
-        victron_debug_enabled = dbg;
-        ESP_LOGI(TAG, "Victron BLE debug %s", dbg ? "ENABLED" : "disabled");
-    }
 }
 
 void victron_ble_set_debug(bool enabled)
@@ -155,7 +151,7 @@ static int ble_gap_event_handler(struct ble_gap_event *event, void *arg) {
     
     victronManufacturerData *mdata = (void*)fields.mfg_data;
     
-    // Log all Victron packets (vendor ID 0x02e1)
+    // Log all Victron packets (vendor ID 0x02e1) - verbose packet logs
     if (mdata->vendorID == 0x02e1) {
         VDBG("=== Victron BLE Packet Received ===");
         VDBG("MAC: %02X:%02X:%02X:%02X:%02X:%02X",
@@ -170,7 +166,9 @@ static int ble_gap_event_handler(struct ble_gap_event *event, void *arg) {
         VDBG("Encrypt Key Match Byte: 0x%02X (local key[0]=0x%02X)", 
                  mdata->encryptKeyMatch, aes_key[0]);
         VDBG("Manufacturer data length: %d bytes", fields.mfg_data_len);
-        if (victron_debug_enabled) ESP_LOG_BUFFER_HEX_LEVEL(TAG, fields.mfg_data, fields.mfg_data_len, ESP_LOG_INFO);
+        if (victron_debug_enabled) {
+            ESP_LOG_BUFFER_HEX_LEVEL(TAG, fields.mfg_data, fields.mfg_data_len, ESP_LOG_INFO);
+        }
     }
     
     // Check vendor ID and key match
@@ -185,13 +183,17 @@ static int ble_gap_event_handler(struct ble_gap_event *event, void *arg) {
     }
 
     int encr_size = fields.mfg_data_len - offsetof(victronManufacturerData, victronEncryptedData);
-    ESP_LOGI(TAG, "Encrypted data size: %d bytes", encr_size);
-    
+    if (victron_debug_enabled) {
+        ESP_LOGI(TAG, "Encrypted data size: %d bytes", encr_size);
+    }
+
     uint8_t input[32] = {0}, output[32] = {0};
     memcpy(input, mdata->victronEncryptedData, encr_size);
-    
-    ESP_LOGI(TAG, "Encrypted payload:");
-    ESP_LOG_BUFFER_HEX_LEVEL(TAG, input, encr_size, ESP_LOG_INFO);
+
+    if (victron_debug_enabled) {
+        ESP_LOGI(TAG, "Encrypted payload:");
+        ESP_LOG_BUFFER_HEX_LEVEL(TAG, input, encr_size, ESP_LOG_INFO);
+    }
 
     // Decrypt
     esp_aes_context ctx;
@@ -215,8 +217,10 @@ static int ble_gap_event_handler(struct ble_gap_event *event, void *arg) {
         return 0; 
     }
 
-    ESP_LOGI(TAG, "Decrypted payload (nonce=0x%04X):", nonce);
-    ESP_LOG_BUFFER_HEX_LEVEL(TAG, output, encr_size, ESP_LOG_INFO);
+    if (victron_debug_enabled) {
+        ESP_LOGI(TAG, "Decrypted payload (nonce=0x%04X):", nonce);
+        ESP_LOG_BUFFER_HEX_LEVEL(TAG, output, encr_size, ESP_LOG_INFO);
+    }
 
     victron_data_t parsed = {
         .type = VICTRON_DEVICE_TYPE_UNKNOWN,
@@ -225,22 +229,22 @@ static int ble_gap_event_handler(struct ble_gap_event *event, void *arg) {
     bool parse_success = false;
     switch (mdata->victronRecordType) {
     case VICTRON_DEVICE_TYPE_SOLAR_CHARGER:
-        ESP_LOGI(TAG, "Parsing as Solar Charger...");
+        if (victron_debug_enabled) ESP_LOGI(TAG, "Parsing as Solar Charger...");
         parse_success = parse_solar_payload(output, (size_t)encr_size, &parsed.payload.solar);
         if (parse_success) {
             parsed.type = VICTRON_DEVICE_TYPE_SOLAR_CHARGER;
-            ESP_LOGI(TAG, "Solar Charger parsed successfully");
+            if (victron_debug_enabled) ESP_LOGI(TAG, "Solar Charger parsed successfully");
         } else {
             ESP_LOGE(TAG, "Failed to parse Solar Charger payload");
         }
         break;
         
     case VICTRON_DEVICE_TYPE_BATTERY_MONITOR:
-        ESP_LOGI(TAG, "Parsing as Battery Monitor...");
+        if (victron_debug_enabled) ESP_LOGI(TAG, "Parsing as Battery Monitor...");
         parse_success = parse_battery_payload(output, (size_t)encr_size, &parsed.payload.battery);
         if (parse_success) {
             parsed.type = VICTRON_DEVICE_TYPE_BATTERY_MONITOR;
-            ESP_LOGI(TAG, "Battery Monitor parsed successfully");
+            if (victron_debug_enabled) ESP_LOGI(TAG, "Battery Monitor parsed successfully");
         } else {
             ESP_LOGE(TAG, "Failed to parse Battery Monitor payload");
         }
@@ -256,8 +260,11 @@ static int ble_gap_event_handler(struct ble_gap_event *event, void *arg) {
         ESP_LOGE(TAG, "=== Parsing Failed ===");
         return 0;
     }
+    
+    if (victron_debug_enabled) {
+        ESP_LOGI(TAG, "=== Packet Successfully Decoded ===\n");
+    }
 
-    ESP_LOGI(TAG, "=== Packet Successfully Decoded ===\n");
     ui_set_ble_mac(event->disc.addr.val);
 
     if (data_cb) data_cb(&parsed);
@@ -293,15 +300,15 @@ static bool parse_solar_payload(const uint8_t *buf, size_t len, victron_solar_da
     // Parse load current if present
     if (len >= 12) load_raw = (uint16_t)buf[10] | ((uint16_t)(buf[11] & 0x01) << 8);
 
-    ESP_LOGI(TAG, "  Device State: 0x%02X", out->device_state);
-    ESP_LOGI(TAG, "  Error Code: 0x%02X", out->error_code);
-    ESP_LOGI(TAG, "  Battery Voltage (raw): 0x%04X %s", voltage_raw, 
+    VDBG("  Device State: 0x%02X", out->device_state);
+    VDBG("  Error Code: 0x%02X", out->error_code);
+    VDBG("  Battery Voltage (raw): 0x%04X %s", voltage_raw, 
              (voltage_raw == NA_U16_SIGNED) ? "(NA)" : "");
-    ESP_LOGI(TAG, "  Battery Current (raw): 0x%04X %s", current_raw,
+    VDBG("  Battery Current (raw): 0x%04X %s", current_raw,
              (current_raw == NA_U16_SIGNED) ? "(NA)" : "");
-    ESP_LOGI(TAG, "  Yield Today (raw): 0x%04X %s", yield_raw,
+    VDBG("  Yield Today (raw): 0x%04X %s", yield_raw,
              (yield_raw == NA_U16_UNSIGNED) ? "(NA)" : "");
-    ESP_LOGI(TAG, "  PV Power (raw): 0x%04X %s", power_raw,
+    VDBG("  PV Power (raw): 0x%04X %s", power_raw,
              (power_raw == NA_U16_UNSIGNED) ? "(NA)" : "");
 
     // Check for NA values and convert signed values
@@ -310,15 +317,15 @@ static bool parse_solar_payload(const uint8_t *buf, size_t len, victron_solar_da
     out->today_yield_centikwh = (yield_raw == NA_U16_UNSIGNED) ? 0 : yield_raw;
     out->input_power_w = (power_raw == NA_U16_UNSIGNED) ? 0 : power_raw;
 
-    ESP_LOGI(TAG, "  Load Current (raw): 0x%03X %s", load_raw,
+    VDBG("  Load Current (raw): 0x%03X %s", load_raw,
              (load_raw == NA_U9) ? "(NA)" : "");
     out->load_current_deci = (load_raw == NA_U9) ? 0 : load_raw;
 
-    ESP_LOGI(TAG, "  --> Battery: %.2fV, %.1fA", 
+    VDBG("  --> Battery: %.2fV, %.1fA", 
              out->battery_voltage_centi / 100.0, out->battery_current_deci / 10.0);
-    ESP_LOGI(TAG, "  --> PV Power: %u W, Yield: %.2f kWh", 
+    VDBG("  --> PV Power: %u W, Yield: %.2f kWh", 
              out->input_power_w, out->today_yield_centikwh / 100.0);
-    ESP_LOGI(TAG, "  --> Load: %.1fA", out->load_current_deci / 10.0);
+    VDBG("  --> Load: %.1fA", out->load_current_deci / 10.0);
 
     return true;
 }
@@ -341,12 +348,12 @@ static bool parse_battery_payload(const uint8_t *buf, size_t len, victron_batter
     uint16_t alarm_raw = read_u16_le(&buf[4]);
     uint16_t aux_raw = read_u16_le(&buf[6]);
 
-    ESP_LOGI(TAG, "  TTG (raw): 0x%04X %s", ttg_raw,
+    VDBG("  TTG (raw): 0x%04X %s", ttg_raw,
              (ttg_raw == NA_U16_UNSIGNED) ? "(NA)" : "");
-    ESP_LOGI(TAG, "  Battery Voltage (raw): 0x%04X %s", voltage_raw,
+    VDBG("  Battery Voltage (raw): 0x%04X %s", voltage_raw,
              (voltage_raw == NA_U16_SIGNED) ? "(NA)" : "");
-    ESP_LOGI(TAG, "  Alarm Reason: 0x%04X", alarm_raw);
-    ESP_LOGI(TAG, "  Aux Value (raw): 0x%04X", aux_raw);
+    VDBG("  Alarm Reason: 0x%04X", alarm_raw);
+    VDBG("  Aux Value (raw): 0x%04X", aux_raw);
 
     out->time_to_go_minutes = (ttg_raw == NA_U16_UNSIGNED) ? 0 : ttg_raw;
     out->battery_voltage_centi = (voltage_raw == NA_U16_SIGNED) ? 0 : voltage_raw;
@@ -360,14 +367,14 @@ static bool parse_battery_payload(const uint8_t *buf, size_t len, victron_batter
     // bits 24-43: consumed_ah (20 bits, signed)
     // bits 44-53: soc (10 bits)
     
-    ESP_LOGI(TAG, "  Packed field bytes [8-15]:");
-    ESP_LOG_BUFFER_HEX_LEVEL(TAG, &buf[8], 8, ESP_LOG_INFO);
+    VDBG("  Packed field bytes [8-15]:");
+    if (victron_debug_enabled) ESP_LOG_BUFFER_HEX_LEVEL(TAG, &buf[8], 8, ESP_LOG_INFO);
     
     uint64_t tail = 0;
     for (size_t i = 0; i < 8; ++i) {
         tail |= ((uint64_t)buf[8 + i]) << (8 * i);
     }
-    ESP_LOGI(TAG, "  Packed 64-bit value: 0x%016llX", tail);
+    VDBG("  Packed 64-bit value: 0x%016llX", tail);
 
     uint8_t aux_input_raw = (uint8_t)(tail & 0x03u);
     tail >>= 2;
@@ -380,11 +387,11 @@ static bool parse_battery_payload(const uint8_t *buf, size_t len, victron_batter
 
     uint32_t soc_bits = (uint32_t)(tail & ((1u << 10) - 1u));
 
-    ESP_LOGI(TAG, "  Aux Input: %u (0=AuxV, 1=MidV, 2=Temp, 3=None)", aux_input_raw);
-    ESP_LOGI(TAG, "  Battery Current (bits): 0x%06X %s", current_bits,
+    VDBG("  Aux Input: %u (0=AuxV, 1=MidV, 2=Temp, 3=None)", aux_input_raw);
+    VDBG("  Battery Current (bits): 0x%06X %s", current_bits,
              (current_bits == NA_U22) ? "(NA)" : "");
-    ESP_LOGI(TAG, "  Consumed Ah (bits): 0x%05X", consumed_bits);
-    ESP_LOGI(TAG, "  SOC (bits): 0x%03X %s", soc_bits,
+    VDBG("  Consumed Ah (bits): 0x%05X", consumed_bits);
+    VDBG("  SOC (bits): 0x%03X %s", soc_bits,
              (soc_bits == NA_U10) ? "(NA)" : "");
 
     out->aux_input = aux_input_raw;
@@ -394,26 +401,26 @@ static bool parse_battery_payload(const uint8_t *buf, size_t len, victron_batter
     out->consumed_ah_deci = sign_extend(consumed_bits, 20);
     out->soc_deci_percent = (soc_bits == NA_U10 || soc_bits > 1000u) ? 0 : (uint16_t)soc_bits;
 
-    ESP_LOGI(TAG, "  --> Battery: %.2fV, %.3fA", 
+    VDBG("  --> Battery: %.2fV, %.3fA", 
              out->battery_voltage_centi / 100.0, out->battery_current_milli / 1000.0);
-    ESP_LOGI(TAG, "  --> SOC: %.1f%%, Consumed: %.1f Ah", 
+    VDBG("  --> SOC: %.1f%%, Consumed: %.1f Ah", 
              out->soc_deci_percent / 10.0, -out->consumed_ah_deci / 10.0);
-    ESP_LOGI(TAG, "  --> TTG: %u min (%.1f hours)", 
+    VDBG("  --> TTG: %u min (%.1f hours)", 
              out->time_to_go_minutes, out->time_to_go_minutes / 60.0);
 
     // Interpret aux_value based on aux_input
     switch(out->aux_input) {
         case 0:
-            ESP_LOGI(TAG, "  --> Aux Voltage: %.2fV", aux_raw / 100.0);
+            VDBG("  --> Aux Voltage: %.2fV", aux_raw / 100.0);
             break;
         case 1:
-            ESP_LOGI(TAG, "  --> Mid Voltage: %.2fV", aux_raw / 100.0);
+            VDBG("  --> Mid Voltage: %.2fV", aux_raw / 100.0);
             break;
         case 2:
-            ESP_LOGI(TAG, "  --> Temperature: %.2f°C", aux_raw / 100.0);
+            VDBG("  --> Temperature: %.2f°C", aux_raw / 100.0);
             break;
         case 3:
-            ESP_LOGI(TAG, "  --> Aux: None");
+            VDBG("  --> Aux: None");
             break;
     }
 
