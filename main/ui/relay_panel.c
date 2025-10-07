@@ -2,6 +2,8 @@
 
 #include <lvgl.h>
 #include <stdio.h>
+#include "esp_log.h"
+#include "driver/gpio.h"
 
 #define RELAY_COL_COUNT 4
 #define RELAY_MIN_BUTTON_SIZE 48
@@ -9,6 +11,7 @@
 static lv_style_t relay_btn_on_style;
 static lv_style_t relay_btn_off_style;
 static bool relay_styles_init = false;
+static const char *TAG = "UI_RELAY";
 
 static void relay_button_event_cb(lv_event_t *e);
 static void relay_apply_button_style(ui_state_t *ui, size_t index);
@@ -108,6 +111,22 @@ void ui_relay_panel_refresh(ui_state_t *ui)
             lv_obj_t *label = lv_label_create(btn);
             lv_obj_center(label);
             ui->relay_button_labels[i] = label;
+            /* Configure GPIO for this relay */
+            gpio_config_t io_conf = {
+                .mode = GPIO_MODE_OUTPUT,
+                .pin_bit_mask = (1ULL << pin),
+                .pull_down_en = GPIO_PULLDOWN_DISABLE,
+                .pull_up_en = GPIO_PULLUP_DISABLE,
+                .intr_type = GPIO_INTR_DISABLE,
+            };
+            esp_err_t gerr = gpio_config(&io_conf);
+            if (gerr != ESP_OK) {
+                ESP_LOGE(TAG, "gpio_config failed for GPIO %u: %s", (unsigned)pin, esp_err_to_name(gerr));
+            } else {
+                /* Set initial level (off) */
+                gpio_set_level((gpio_num_t)pin, 0);
+                ESP_LOGI(TAG, "Configured GPIO %u as output (initial low)", (unsigned)pin);
+            }
         } else {
             lv_obj_set_size(btn, button_size, button_size);
         }
@@ -163,6 +182,16 @@ static void relay_button_event_cb(lv_event_t *e)
         if (ui->relay_buttons[i] == btn) {
             ui->relay_button_state[i] = !ui->relay_button_state[i];
             relay_apply_button_style(ui, i);
+            uint8_t pin = ui->relay_config.gpio_pins[i];
+            if (pin != UI_RELAY_GPIO_UNASSIGNED) {
+                int level = ui->relay_button_state[i] ? 1 : 0;
+                esp_err_t gerr = gpio_set_level((gpio_num_t)pin, level);
+                if (gerr != ESP_OK) {
+                    ESP_LOGE(TAG, "Failed to set GPIO %u to %d: %s", (unsigned)pin, level, esp_err_to_name(gerr));
+                } else {
+                    ESP_LOGI(TAG, "GPIO %u set to %d (button %u)", (unsigned)pin, level, (unsigned)i);
+                }
+            }
             break;
         }
     }
@@ -189,11 +218,13 @@ static void relay_apply_button_style(ui_state_t *ui, size_t index)
         if (label != NULL) {
             lv_obj_set_style_text_color(label, lv_color_white(), LV_PART_MAIN | LV_STATE_DEFAULT);
         }
+        ESP_LOGI(TAG, "Relay button %u ON", (unsigned)index);
     } else {
         lv_obj_add_style(btn, &relay_btn_off_style, LV_PART_MAIN);
         if (label != NULL) {
             lv_obj_set_style_text_color(label, lv_palette_darken(LV_PALETTE_GREY, 4), LV_PART_MAIN | LV_STATE_DEFAULT);
         }
+        ESP_LOGI(TAG, "Relay button %u OFF", (unsigned)index);
     }
 }
 
@@ -204,6 +235,12 @@ static void relay_destroy_button(ui_state_t *ui, size_t index)
     }
 
     if (ui->relay_buttons[index] != NULL) {
+        /* Before deleting the LV button, ensure the GPIO is put low */
+        uint8_t pin = ui->relay_config.gpio_pins[index];
+        if (pin != UI_RELAY_GPIO_UNASSIGNED) {
+            gpio_set_level((gpio_num_t)pin, 0);
+            ESP_LOGI(TAG, "Relay button %u: GPIO %u driven low on destroy", (unsigned)index, (unsigned)pin);
+        }
         lv_obj_del(ui->relay_buttons[index]);
         ui->relay_buttons[index] = NULL;
     }
