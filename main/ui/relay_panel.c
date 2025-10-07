@@ -40,8 +40,7 @@ void ui_relay_panel_init(ui_state_t *ui)
     }
 
     lv_obj_t *description = lv_label_create(ui->tab_relay);
-    lv_label_set_text(description,
-                      "No relay buttons configured. Add them from Settings -> Relay controls.");
+    lv_label_set_text(description, "No relay buttons configured. Add them from Settings.");
     lv_label_set_long_mode(description, LV_LABEL_LONG_WRAP);
     lv_obj_set_width(description, lv_pct(90));
     lv_obj_align(description, LV_ALIGN_TOP_MID, 0, 20);
