@@ -307,12 +307,14 @@ void ui_settings_panel_init(ui_state_t *ui,
     lv_obj_set_style_pad_gap(controls_row, 12, 0);
 
     ui->relay_config.add_btn = lv_btn_create(controls_row);
+    lv_obj_set_size(ui->relay_config.add_btn, 48, 48);
     lv_obj_t *lbl_add = lv_label_create(ui->relay_config.add_btn);
     lv_label_set_text(lbl_add, "+");
     lv_obj_center(lbl_add);
     lv_obj_add_event_cb(ui->relay_config.add_btn, relay_config_add_btn_event_cb, LV_EVENT_CLICKED, ui);
 
     ui->relay_config.remove_btn = lv_btn_create(controls_row);
+    lv_obj_set_size(ui->relay_config.remove_btn, 48, 48);
     lv_obj_t *lbl_remove = lv_label_create(ui->relay_config.remove_btn);
     lv_label_set_text(lbl_remove, "-");
     lv_obj_center(lbl_remove);
