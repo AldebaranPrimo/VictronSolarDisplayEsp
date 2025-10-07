@@ -135,8 +135,12 @@ void ui_relay_panel_refresh(ui_state_t *ui)
 
         lv_obj_t *label = ui->relay_button_labels[i];
         if (label != NULL) {
-            snprintf(ui->relay_button_text[i], sizeof(ui->relay_button_text[i]), "GPIO %u", (unsigned)pin);
-            lv_label_set_text(label, ui->relay_button_text[i]);
+            if (ui->relay_button_text[i][0] != '\0') {
+                lv_label_set_text(label, ui->relay_button_text[i]);
+            } else {
+                snprintf(ui->relay_button_text[i], sizeof(ui->relay_button_text[i]), "GPIO %u", (unsigned)pin);
+                lv_label_set_text(label, ui->relay_button_text[i]);
+            }
         }
 
         relay_apply_button_style(ui, i);

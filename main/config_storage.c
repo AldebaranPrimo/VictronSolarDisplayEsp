@@ -16,6 +16,7 @@
 #define RELAY_ENABLED_KEY     "enabled"
 #define RELAY_COUNT_KEY       "count"
 #define RELAY_PINS_KEY        "pins"
+#define RELAY_LABELS_KEY      "labels"
 #define RELAY_MAX_PINS        8
 #define RELAY_UNUSED_PIN      0xFF
 
@@ -159,6 +160,7 @@ esp_err_t save_screensaver_settings(bool enabled, uint8_t brightness, uint16_t t
 esp_err_t load_relay_config(bool *enabled_out,
                             uint8_t *count_out,
                             uint8_t *pins_out,
+                            char (*labels_out)[20],
                             size_t max_pins)
 {
     if (enabled_out == NULL || count_out == NULL || pins_out == NULL || max_pins == 0) {
@@ -205,6 +207,16 @@ esp_err_t load_relay_config(bool *enabled_out,
         changed = true;
     }
 
+    char stored_labels[RELAY_MAX_PINS][20];
+    size_t labels_blob_size = sizeof(stored_labels);
+    tmp = nvs_get_blob(h, RELAY_LABELS_KEY, stored_labels, &labels_blob_size);
+    if (tmp != ESP_OK || labels_blob_size != sizeof(stored_labels)) {
+        /* Initialize empty labels */
+        for (size_t i = 0; i < RELAY_MAX_PINS; ++i) stored_labels[i][0] = '\0';
+        nvs_set_blob(h, RELAY_LABELS_KEY, stored_labels, sizeof(stored_labels));
+        changed = true;
+    }
+
     if (changed) {
         nvs_commit(h);
     }
@@ -221,6 +233,14 @@ esp_err_t load_relay_config(bool *enabled_out,
         } else {
             pins_out[i] = RELAY_UNUSED_PIN;
         }
+        if (labels_out != NULL) {
+            if (i < count) {
+                strncpy(labels_out[i], stored_labels[i], 20);
+                labels_out[i][19] = '\0';
+            } else {
+                labels_out[i][0] = '\0';
+            }
+        }
     }
 
     *enabled_out = (en != 0);
@@ -230,6 +250,7 @@ esp_err_t load_relay_config(bool *enabled_out,
 
 esp_err_t save_relay_config(bool enabled,
                             const uint8_t *pins,
+                            const char (*labels)[20],
                             uint8_t count)
 {
     if (count > RELAY_MAX_PINS) {
@@ -247,6 +268,9 @@ esp_err_t save_relay_config(bool enabled,
         stored_pins[i] = RELAY_UNUSED_PIN;
     }
 
+    char stored_labels[RELAY_MAX_PINS][20];
+    for (size_t i = 0; i < RELAY_MAX_PINS; ++i) stored_labels[i][0] = '\0';
+
     if (pins != NULL) {
         size_t copy_count = count;
         if (copy_count > RELAY_MAX_PINS) {
@@ -255,9 +279,19 @@ esp_err_t save_relay_config(bool enabled,
         memcpy(stored_pins, pins, copy_count);
     }
 
+    if (labels != NULL) {
+        size_t copy_count = count;
+        if (copy_count > RELAY_MAX_PINS) copy_count = RELAY_MAX_PINS;
+        for (size_t i = 0; i < copy_count; ++i) {
+            strncpy(stored_labels[i], labels[i], 20);
+            stored_labels[i][19] = '\0';
+        }
+    }
+
     err = nvs_set_u8(h, RELAY_ENABLED_KEY, enabled ? 1 : 0);
     if (err == ESP_OK) err = nvs_set_u8(h, RELAY_COUNT_KEY, count);
     if (err == ESP_OK) err = nvs_set_blob(h, RELAY_PINS_KEY, stored_pins, sizeof(stored_pins));
+    if (err == ESP_OK) err = nvs_set_blob(h, RELAY_LABELS_KEY, stored_labels, sizeof(stored_labels));
     if (err == ESP_OK) err = nvs_commit(h);
 
     nvs_close(h);

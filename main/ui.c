@@ -75,6 +75,7 @@ void ui_init(void) {
         ui->relay_config.rows[i] = NULL;
         ui->relay_config.labels[i] = NULL;
         ui->relay_config.dropdowns[i] = NULL;
+        ui->relay_config.textareas[i] = NULL;
         ui->relay_button_text[i][0] = '\0';
         ui->relay_buttons[i] = NULL;
         ui->relay_button_labels[i] = NULL;
@@ -87,13 +88,16 @@ void ui_init(void) {
     bool relay_enabled = ui->relay_tab_enabled;
     uint8_t saved_count = 0;
     uint8_t saved_pins[UI_MAX_RELAY_BUTTONS];
+    char saved_labels[UI_MAX_RELAY_BUTTONS][20];
     for (size_t i = 0; i < UI_MAX_RELAY_BUTTONS; ++i) {
         saved_pins[i] = UI_RELAY_GPIO_UNASSIGNED;
+        saved_labels[i][0] = '\0';
     }
 
     esp_err_t relay_err = load_relay_config(&relay_enabled,
                                             &saved_count,
                                             saved_pins,
+                                            saved_labels,
                                             UI_MAX_RELAY_BUTTONS);
     if (relay_err == ESP_OK) {
         if (saved_count > UI_MAX_RELAY_BUTTONS) {
@@ -105,6 +109,12 @@ void ui_init(void) {
             ui->relay_config.gpio_pins[i] = (i < saved_count)
                 ? saved_pins[i]
                 : UI_RELAY_GPIO_UNASSIGNED;
+            if (i < saved_count && saved_labels[i][0] != '\0') {
+                strncpy(ui->relay_button_text[i], saved_labels[i], sizeof(ui->relay_button_text[i]));
+                ui->relay_button_text[i][sizeof(ui->relay_button_text[i]) - 1] = '\0';
+            } else {
+                ui->relay_button_text[i][0] = '\0';
+            }
         }
     } else {
         ui->relay_tab_enabled = true;

@@ -47,6 +47,7 @@ typedef struct {
     lv_obj_t *rows[UI_MAX_RELAY_BUTTONS];
     lv_obj_t *labels[UI_MAX_RELAY_BUTTONS];
     lv_obj_t *dropdowns[UI_MAX_RELAY_BUTTONS];
+    lv_obj_t *textareas[UI_MAX_RELAY_BUTTONS];
     bool dropdown_updating;
 } ui_relay_config_t;
 

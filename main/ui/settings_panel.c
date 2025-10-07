@@ -51,6 +51,7 @@ static void relay_config_append_option(char *buf, size_t buf_len, const char *li
 static void relay_config_append_gpio_option(char *buf, size_t buf_len, uint8_t pin);
 static uint8_t relay_config_parse_gpio_label(const char *label);
 static void relay_config_persist(ui_state_t *ui);
+static void relay_label_ta_event_cb(lv_event_t *e);
 
 static const uint8_t RELAY_GPIO_CHOICES[] = {5, 6, 7, 15, 16, 46, 9, 14};
 static const size_t RELAY_GPIO_COUNT = sizeof(RELAY_GPIO_CHOICES) / sizeof(RELAY_GPIO_CHOICES[0]);
@@ -800,6 +801,8 @@ static void relay_config_remove_btn_event_cb(lv_event_t *e)
     ui->relay_config.rows[index] = NULL;
     ui->relay_config.labels[index] = NULL;
     ui->relay_config.dropdowns[index] = NULL;
+    /* row deletion already removes child objects (including textarea) if present; just clear pointer */
+    ui->relay_config.textareas[index] = NULL;
     ui->relay_config.gpio_pins[index] = UI_RELAY_GPIO_UNASSIGNED;
     ui->relay_button_state[index] = false;
     ui->relay_config.count--;
@@ -995,9 +998,26 @@ static void relay_config_create_row(ui_state_t *ui, size_t index)
     lv_obj_set_width(dropdown, 140);
     lv_obj_add_event_cb(dropdown, relay_dropdown_event_cb, LV_EVENT_VALUE_CHANGED, ui);
 
+    /* Add a textarea for an optional custom label */
+    lv_obj_t *ta = lv_textarea_create(row);
+    lv_obj_set_width(ta, 140);
+    lv_textarea_set_one_line(ta, true);
+    lv_textarea_set_placeholder_text(ta, "Label (optional)");
+    /* If user previously set a custom label, show it; otherwise leave empty */
+    if (index < UI_MAX_RELAY_BUTTONS && ui->relay_button_text[index][0] != '\0') {
+        lv_textarea_set_text(ta, ui->relay_button_text[index]);
+    }
+    lv_obj_add_event_cb(ta, ta_event_cb, LV_EVENT_FOCUSED, ui);
+    lv_obj_add_event_cb(ta, ta_event_cb, LV_EVENT_DEFOCUSED, ui);
+    lv_obj_add_event_cb(ta, ta_event_cb, LV_EVENT_READY, ui);
+    /* Save label on defocus/ready */
+    lv_obj_add_event_cb(ta, relay_label_ta_event_cb, LV_EVENT_DEFOCUSED, ui);
+    lv_obj_add_event_cb(ta, relay_label_ta_event_cb, LV_EVENT_READY, ui);
+
     ui->relay_config.rows[index] = row;
     ui->relay_config.labels[index] = label;
     ui->relay_config.dropdowns[index] = dropdown;
+    ui->relay_config.textareas[index] = ta;
 }
 
 static void relay_config_append_option(char *buf, size_t buf_len, const char *line)
@@ -1064,8 +1084,46 @@ static void relay_config_persist(ui_state_t *ui)
         }
     }
 
-    esp_err_t err = save_relay_config(ui->relay_tab_enabled, pins, count);
+    /* Prepare labels to persist: fixed 20-byte strings per slot */
+    char labels[UI_MAX_RELAY_BUTTONS][20];
+    for (size_t i = 0; i < UI_MAX_RELAY_BUTTONS; ++i) {
+        if (i < count && ui->relay_button_text[i][0] != '\0') {
+            strncpy(labels[i], ui->relay_button_text[i], sizeof(labels[i]));
+            labels[i][sizeof(labels[i]) - 1] = '\0';
+        } else {
+            labels[i][0] = '\0';
+        }
+    }
+
+    esp_err_t err = save_relay_config(ui->relay_tab_enabled, pins, labels, count);
     if (err != ESP_OK) {
         ESP_LOGW(TAG_SETTINGS, "Failed to save relay config: %s", esp_err_to_name(err));
+    }
+}
+
+static void relay_label_ta_event_cb(lv_event_t *e)
+{
+    ui_state_t *ui = lv_event_get_user_data(e);
+    if (ui == NULL) return;
+
+    lv_event_code_t code = lv_event_get_code(e);
+    if (!(code == LV_EVENT_DEFOCUSED || code == LV_EVENT_READY)) return;
+
+    lv_obj_t *ta = lv_event_get_target(e);
+    if (ta == NULL) return;
+
+    for (size_t j = 0; j < ui->relay_config.count; ++j) {
+        if (ui->relay_config.textareas[j] == ta) {
+            const char *txt = lv_textarea_get_text(ta);
+            if (txt && txt[0] != '\0') {
+                strncpy(ui->relay_button_text[j], txt, sizeof(ui->relay_button_text[j]));
+                ui->relay_button_text[j][sizeof(ui->relay_button_text[j]) - 1] = '\0';
+            } else {
+                ui->relay_button_text[j][0] = '\0';
+            }
+            relay_config_persist(ui);
+            ui_relay_panel_refresh(ui);
+            break;
+        }
     }
 }
