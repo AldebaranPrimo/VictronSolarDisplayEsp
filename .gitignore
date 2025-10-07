@@ -11,6 +11,8 @@
 /dependencies.lock
 /.python_env/
 
+/release
+
 /managed_components
 
 /gdbinit
