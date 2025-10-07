@@ -65,6 +65,8 @@ typedef struct ui_state {
     lv_obj_t *ta_mac;
     lv_obj_t *ta_key;
     uint8_t brightness;
+    bool victron_debug_enabled;
+    lv_obj_t *victron_debug_checkbox;
     victron_device_type_t current_device_type;
     struct ui_device_view *active_view;
     struct ui_device_view *views[UI_MAX_DEVICE_VIEWS];

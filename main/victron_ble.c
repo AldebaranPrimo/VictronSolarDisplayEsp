@@ -10,8 +10,14 @@
 #include "nimble/nimble_port_freertos.h"
 #include "host/ble_hs.h"
 #include "aes/esp_aes.h"
+#include "config_storage.h"
 
 static const char *TAG = "victron_ble";
+
+// runtime debug flag controlled from UI
+static bool victron_debug_enabled = false;
+
+#define VDBG(fmt, ...) do { if (victron_debug_enabled) ESP_LOGI(TAG, fmt, ##__VA_ARGS__); } while(0)
 
 // NA (Not Available) values per spec
 #define NA_U16_SIGNED   0x7FFF
@@ -76,6 +82,19 @@ void victron_ble_init(void) {
     nimble_port_init();
     ble_hs_cfg.sync_cb = ble_app_on_sync;
     nimble_port_freertos_init(ble_host_task);
+
+    // Load persisted debug flag (if available)
+    bool dbg = false;
+    if (load_victron_debug(&dbg) == ESP_OK) {
+        victron_debug_enabled = dbg;
+        ESP_LOGI(TAG, "Victron BLE debug %s", dbg ? "ENABLED" : "disabled");
+    }
+}
+
+void victron_ble_set_debug(bool enabled)
+{
+    victron_debug_enabled = enabled;
+    ESP_LOGI(TAG, "Victron BLE debug set to %s", enabled ? "ENABLED" : "disabled");
 }
 
 static void ble_host_task(void *param) {
@@ -138,20 +157,20 @@ static int ble_gap_event_handler(struct ble_gap_event *event, void *arg) {
     
     // Log all Victron packets (vendor ID 0x02e1)
     if (mdata->vendorID == 0x02e1) {
-        ESP_LOGI(TAG, "=== Victron BLE Packet Received ===");
-        ESP_LOGI(TAG, "MAC: %02X:%02X:%02X:%02X:%02X:%02X",
+        VDBG("=== Victron BLE Packet Received ===");
+        VDBG("MAC: %02X:%02X:%02X:%02X:%02X:%02X",
                  event->disc.addr.val[5], event->disc.addr.val[4],
                  event->disc.addr.val[3], event->disc.addr.val[2],
                  event->disc.addr.val[1], event->disc.addr.val[0]);
-        ESP_LOGI(TAG, "Vendor ID: 0x%04X", mdata->vendorID);
-        ESP_LOGI(TAG, "Beacon Type: 0x%02X", mdata->beaconType);
-        ESP_LOGI(TAG, "Record Type: 0x%02X (%s)", mdata->victronRecordType, 
+        VDBG("Vendor ID: 0x%04X", mdata->vendorID);
+        VDBG("Beacon Type: 0x%02X", mdata->beaconType);
+        VDBG("Record Type: 0x%02X (%s)", mdata->victronRecordType, 
                  get_device_type_name(mdata->victronRecordType));
-        ESP_LOGI(TAG, "Nonce/Counter: 0x%04X (%u)", mdata->nonceDataCounter, mdata->nonceDataCounter);
-        ESP_LOGI(TAG, "Encrypt Key Match Byte: 0x%02X (local key[0]=0x%02X)", 
+        VDBG("Nonce/Counter: 0x%04X (%u)", mdata->nonceDataCounter, mdata->nonceDataCounter);
+        VDBG("Encrypt Key Match Byte: 0x%02X (local key[0]=0x%02X)", 
                  mdata->encryptKeyMatch, aes_key[0]);
-        ESP_LOGI(TAG, "Manufacturer data length: %d bytes", fields.mfg_data_len);
-        ESP_LOG_BUFFER_HEX_LEVEL(TAG, fields.mfg_data, fields.mfg_data_len, ESP_LOG_INFO);
+        VDBG("Manufacturer data length: %d bytes", fields.mfg_data_len);
+        if (victron_debug_enabled) ESP_LOG_BUFFER_HEX_LEVEL(TAG, fields.mfg_data, fields.mfg_data_len, ESP_LOG_INFO);
     }
     
     // Check vendor ID and key match

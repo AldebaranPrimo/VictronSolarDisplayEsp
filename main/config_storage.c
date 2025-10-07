@@ -19,6 +19,9 @@
 #define RELAY_MAX_PINS        8
 #define RELAY_UNUSED_PIN      0xFF
 
+#define DEBUG_NAMESPACE       "debug"
+#define VICTRON_DEBUG_KEY     "victron_debug"
+
 esp_err_t load_brightness(uint8_t *brightness_out) {
     nvs_handle_t h;
     esp_err_t err = nvs_open(BRIGHTNESS_NAMESPACE, NVS_READWRITE, &h);
@@ -257,6 +260,37 @@ esp_err_t save_relay_config(bool enabled,
     if (err == ESP_OK) err = nvs_set_blob(h, RELAY_PINS_KEY, stored_pins, sizeof(stored_pins));
     if (err == ESP_OK) err = nvs_commit(h);
 
+    nvs_close(h);
+    return err;
+}
+
+esp_err_t load_victron_debug(bool *enabled_out)
+{
+    if (enabled_out == NULL) return ESP_ERR_INVALID_ARG;
+    nvs_handle_t h;
+    esp_err_t err = nvs_open(DEBUG_NAMESPACE, NVS_READWRITE, &h);
+    if (err != ESP_OK) return err;
+
+    uint8_t v = 0;
+    esp_err_t tmp = nvs_get_u8(h, VICTRON_DEBUG_KEY, &v);
+    if (tmp != ESP_OK) {
+        v = 0; // default: debug disabled
+        nvs_set_u8(h, VICTRON_DEBUG_KEY, v);
+        nvs_commit(h);
+    }
+
+    *enabled_out = (v != 0);
+    nvs_close(h);
+    return ESP_OK;
+}
+
+esp_err_t save_victron_debug(bool enabled)
+{
+    nvs_handle_t h;
+    esp_err_t err = nvs_open(DEBUG_NAMESPACE, NVS_READWRITE, &h);
+    if (err != ESP_OK) return err;
+    err = nvs_set_u8(h, VICTRON_DEBUG_KEY, enabled ? 1 : 0);
+    if (err == ESP_OK) err = nvs_commit(h);
     nvs_close(h);
     return err;
 }

@@ -28,6 +28,7 @@ static void save_key_btn_event_cb(lv_event_t *e);
 static void reboot_btn_event_cb(lv_event_t *e);
 static void brightness_slider_event_cb(lv_event_t *e);
 static void cb_screensaver_event_cb(lv_event_t *e);
+static void victron_debug_event_cb(lv_event_t *e);
 static void slider_ss_brightness_event_cb(lv_event_t *e);
 static void spinbox_ss_time_event_cb(lv_event_t *e);
 static void spinbox_ss_time_increment_event_cb(lv_event_t *e);
@@ -187,6 +188,15 @@ void ui_settings_panel_init(ui_state_t *ui,
     lv_obj_center(lbl_reboot);
     lv_obj_add_event_cb(btn_reboot, reboot_btn_event_cb, LV_EVENT_CLICKED, ui);
 
+    // Load stored debug flag from NVS
+    bool dbg = false;
+    if (load_victron_debug(&dbg) == ESP_OK) {
+        ui->victron_debug_enabled = dbg;
+        if (dbg) lv_obj_add_state(ui->victron_debug_checkbox, LV_STATE_CHECKED);
+    } else {
+        ui->victron_debug_enabled = false;
+    }
+
     lv_obj_t *lbl_brightness = lv_label_create(ui->tab_settings);
     lv_obj_add_style(lbl_brightness, &ui->styles.title, 0);
     lv_label_set_text(lbl_brightness, "Brightness:");
@@ -215,6 +225,7 @@ void ui_settings_panel_init(ui_state_t *ui,
     lv_obj_add_event_cb(ui->screensaver.checkbox, cb_screensaver_event_cb, LV_EVENT_VALUE_CHANGED, ui);
     lv_obj_add_style(ui->screensaver.checkbox, &ui->styles.medium, 0);
 
+    
     lv_obj_t *lbl_ss_brightness = lv_label_create(ui->tab_settings);
     lv_obj_add_style(lbl_ss_brightness, &ui->styles.title, 0);
     lv_label_set_text(lbl_ss_brightness, "Screensaver Brightness:");
@@ -255,22 +266,29 @@ void ui_settings_panel_init(ui_state_t *ui,
     lv_obj_set_style_bg_img_src(btn_inc, LV_SYMBOL_PLUS, 0);
     lv_obj_add_event_cb(btn_inc, spinbox_ss_time_increment_event_cb, LV_EVENT_ALL, ui);
 
+    // Victron BLE Debug checkbox (Debug section)
+    ui->victron_debug_checkbox = lv_checkbox_create(ui->tab_settings);
+    lv_checkbox_set_text(ui->victron_debug_checkbox, "Enable Victron BLE Debug");
+    lv_obj_add_style(ui->victron_debug_checkbox, &ui->styles.medium, 0);
+    lv_obj_align(ui->victron_debug_checkbox, LV_ALIGN_TOP_LEFT, 8, 870);
+    lv_obj_add_event_cb(ui->victron_debug_checkbox, victron_debug_event_cb, LV_EVENT_VALUE_CHANGED, ui);
+
     lv_obj_t *lbl_relay_tab = lv_label_create(ui->tab_settings);
     lv_obj_add_style(lbl_relay_tab, &ui->styles.title, 0);
     lv_label_set_text(lbl_relay_tab, "Relay Tab:");
-    lv_obj_align(lbl_relay_tab, LV_ALIGN_TOP_LEFT, 8, 870);
+    lv_obj_align(lbl_relay_tab, LV_ALIGN_TOP_LEFT, 8, 950);
 
     ui->relay_checkbox = lv_checkbox_create(ui->tab_settings);
     lv_checkbox_set_text(ui->relay_checkbox, "Enable Relay Tab");
     lv_obj_add_style(ui->relay_checkbox, &ui->styles.medium, 0);
-    lv_obj_align(ui->relay_checkbox, LV_ALIGN_TOP_LEFT, 8, 900);
+    lv_obj_align(ui->relay_checkbox, LV_ALIGN_TOP_LEFT, 8, 980);
     lv_obj_add_event_cb(ui->relay_checkbox, relay_tab_checkbox_event_cb, LV_EVENT_VALUE_CHANGED, ui);
 
     lv_obj_t *relay_section = lv_obj_create(ui->tab_settings);
     lv_obj_remove_style_all(relay_section);
     lv_obj_set_width(relay_section, lv_pct(90));
     lv_obj_set_height(relay_section, LV_SIZE_CONTENT);
-    lv_obj_align(relay_section, LV_ALIGN_TOP_LEFT, 8, 940);
+    lv_obj_align(relay_section, LV_ALIGN_TOP_LEFT, 8, 1020);
     lv_obj_set_layout(relay_section, LV_LAYOUT_FLEX);
     lv_obj_set_flex_flow(relay_section, LV_FLEX_FLOW_COLUMN);
     lv_obj_set_style_pad_gap(relay_section, 12, 0);
@@ -592,6 +610,21 @@ static void cb_screensaver_event_cb(lv_event_t *e)
                               ui->screensaver.brightness,
                               ui->screensaver.timeout);
     screensaver_enable(ui, ui->screensaver.enabled);
+}
+
+static void victron_debug_event_cb(lv_event_t *e)
+{
+    ui_state_t *ui = lv_event_get_user_data(e);
+    if (ui == NULL || ui->victron_debug_checkbox == NULL) return;
+    bool enabled = lv_obj_has_state(ui->victron_debug_checkbox, LV_STATE_CHECKED);
+    ui->victron_debug_enabled = enabled;
+    if (save_victron_debug(enabled) == ESP_OK) {
+        ESP_LOGI(TAG_SETTINGS, "Victron BLE debug %s", enabled ? "enabled" : "disabled");
+    } else {
+        ESP_LOGE(TAG_SETTINGS, "Failed to persist Victron BLE debug setting");
+    }
+    // Apply immediately to BLE module
+    victron_ble_set_debug(enabled);
 }
 
 static void slider_ss_brightness_event_cb(lv_event_t *e)

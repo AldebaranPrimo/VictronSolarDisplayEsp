@@ -41,3 +41,7 @@ esp_err_t load_relay_config(bool *enabled_out,
 esp_err_t save_relay_config(bool enabled,
                             const uint8_t *pins,
                             uint8_t count);
+
+// Victron BLE debug flag persistence (NVS namespace: "debug")
+esp_err_t load_victron_debug(bool *enabled_out);
+esp_err_t save_victron_debug(bool enabled);
