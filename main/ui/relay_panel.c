@@ -6,7 +6,7 @@
 #include "driver/gpio.h"
 
 #define RELAY_COL_COUNT 4
-#define RELAY_MIN_BUTTON_SIZE 48
+#define RELAY_MIN_BUTTON_SIZE 40
 
 static lv_style_t relay_btn_on_style;
 static lv_style_t relay_btn_off_style;
@@ -51,9 +51,9 @@ void ui_relay_panel_init(ui_state_t *ui)
 
     ui->relay_grid = lv_obj_create(ui->tab_relay);
     lv_obj_remove_style_all(ui->relay_grid);
-    lv_obj_set_size(ui->relay_grid, lv_pct(92), LV_SIZE_CONTENT);
-    lv_obj_set_style_pad_row(ui->relay_grid, 16, 0);
-    lv_obj_set_style_pad_column(ui->relay_grid, 16, 0);
+    lv_obj_set_size(ui->relay_grid, lv_pct(100), LV_SIZE_CONTENT);
+    lv_obj_set_style_pad_row(ui->relay_grid, 8, 0);
+    lv_obj_set_style_pad_column(ui->relay_grid, 8, 0);
     lv_obj_set_style_pad_top(ui->relay_grid, 0, 0);
     lv_obj_set_style_pad_bottom(ui->relay_grid, 0, 0);
     lv_obj_set_style_pad_left(ui->relay_grid, 0, 0);
