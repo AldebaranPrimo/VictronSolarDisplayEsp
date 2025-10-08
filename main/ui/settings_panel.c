@@ -79,7 +79,7 @@ static void create_wifi_settings_page(ui_state_t *ui, lv_obj_t *page_wifi,
     /* SSID input */
     ui->wifi.ssid = lv_textarea_create(wifi_container);
     lv_textarea_set_one_line(ui->wifi.ssid, true);
-    lv_obj_set_width(ui->wifi.ssid, lv_pct(90));
+    lv_obj_set_width(ui->wifi.ssid, lv_pct(50));
     lv_textarea_set_text(ui->wifi.ssid, default_ssid);
     lv_obj_add_event_cb(ui->wifi.ssid, ta_event_cb, LV_EVENT_FOCUSED, ui);
     lv_obj_add_event_cb(ui->wifi.ssid, ta_event_cb, LV_EVENT_DEFOCUSED, ui);
@@ -108,7 +108,7 @@ static void create_wifi_settings_page(ui_state_t *ui, lv_obj_t *page_wifi,
     ui->wifi.password = lv_textarea_create(pass_row);
     lv_textarea_set_password_mode(ui->wifi.password, true);
     lv_textarea_set_one_line(ui->wifi.password, true);
-    lv_obj_set_width(ui->wifi.password, lv_pct(70));
+    lv_obj_set_width(ui->wifi.password, lv_pct(50));
     lv_textarea_set_text(ui->wifi.password, ap_password);
     lv_obj_add_event_cb(ui->wifi.password, ta_event_cb, LV_EVENT_FOCUSED, ui);
     lv_obj_add_event_cb(ui->wifi.password, ta_event_cb, LV_EVENT_DEFOCUSED, ui);
