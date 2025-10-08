@@ -96,6 +96,7 @@ static void create_wifi_settings_page(ui_state_t *ui, lv_obj_t *page_wifi,
     lv_obj_add_event_cb(ui->wifi.ssid, ta_event_cb, LV_EVENT_CANCEL, ui);
     lv_obj_add_event_cb(ui->wifi.ssid, ta_event_cb, LV_EVENT_READY, ui);
     lv_obj_add_event_cb(ui->wifi.ssid, wifi_event_cb, LV_EVENT_VALUE_CHANGED, ui);
+    lv_obj_add_style(ui->wifi.ssid, &ui->styles.small, 0);
 
     /* AP enable checkbox */
     ui->wifi.ap_enable = lv_checkbox_create(ssid_row);
@@ -134,6 +135,7 @@ static void create_wifi_settings_page(ui_state_t *ui, lv_obj_t *page_wifi,
     lv_obj_add_event_cb(ui->wifi.password, ta_event_cb, LV_EVENT_CANCEL, ui);
     lv_obj_add_event_cb(ui->wifi.password, ta_event_cb, LV_EVENT_READY, ui);
     lv_obj_add_event_cb(ui->wifi.password, wifi_event_cb, LV_EVENT_VALUE_CHANGED, ui);
+    lv_obj_add_style(ui->wifi.password, &ui->styles.small, 0);
 
     /* Show/Hide password toggle */
     ui->wifi.password_toggle = lv_btn_create(pass_row);
@@ -143,9 +145,8 @@ static void create_wifi_settings_page(ui_state_t *ui, lv_obj_t *page_wifi,
     lv_obj_t *lbl_toggle = lv_label_create(ui->wifi.password_toggle);
     lv_label_set_text(lbl_toggle, "Show");
     lv_obj_center(lbl_toggle);
+    lv_obj_add_style(lbl_toggle, &ui->styles.small, 0);
 }
-
-
 
 static void create_display_settings_page(ui_state_t *ui, lv_obj_t *page_display)
 {
@@ -223,6 +224,7 @@ static void create_display_settings_page(ui_state_t *ui, lv_obj_t *page_display)
     lv_spinbox_set_digit_format(ui->screensaver.spinbox_timeout, 4, 0);
     lv_obj_set_width(ui->screensaver.spinbox_timeout, 120);
     lv_obj_add_event_cb(ui->screensaver.spinbox_timeout, spinbox_ss_time_event_cb, LV_EVENT_VALUE_CHANGED, ui);
+    lv_obj_add_style(ui->screensaver.spinbox_timeout, &ui->styles.small, 0);
 
     /* Increment button */
     lv_obj_t *btn_inc = lv_btn_create(timeout_row);
@@ -437,15 +439,17 @@ void ui_settings_panel_init(ui_state_t *ui,
         return;
     }
 
-    
-
     lv_obj_t *menu = lv_menu_create(ui->tab_settings);
     lv_obj_set_size(menu, lv_pct(100), lv_pct(100));
     lv_obj_center(menu);
     ui->settings_menu = menu;
 
     lv_obj_t *back_btn = lv_menu_get_main_header_back_btn(menu);
-    lv_label_set_text(lv_label_create(back_btn), "Back");
+    lv_obj_add_style(back_btn, &ui->styles.small, 0);
+
+    lv_obj_t *back_label = lv_label_create(back_btn);
+    lv_label_set_text(back_label, "Back");
+    lv_obj_add_style(back_label, &ui->styles.small, 0);
 
     lv_obj_t *main_page = lv_menu_page_create(menu, NULL);
     lv_obj_t *page_wifi = lv_menu_page_create(menu, "Wi-Fi");
@@ -453,21 +457,41 @@ void ui_settings_panel_init(ui_state_t *ui,
     lv_obj_t *page_relay = lv_menu_page_create(menu, "Relay");
     lv_obj_t *page_system = lv_menu_page_create(menu, "System");
 
-    lv_obj_t *cont = lv_menu_cont_create(main_page);
-    lv_label_set_text(lv_label_create(cont), "Wi-Fi");
+    lv_obj_t *cont;
+    lv_obj_t *label;
+
+    // Wi-Fi
+    cont = lv_menu_cont_create(main_page);
+    label = lv_label_create(cont);
+    lv_label_set_text(label, "Wi-Fi");
+    lv_obj_add_style(cont, &ui->styles.small, 0);
+    lv_obj_add_style(label, &ui->styles.small, 0);
     lv_menu_set_load_page_event(menu, cont, page_wifi);
 
+    // Display
     cont = lv_menu_cont_create(main_page);
-    lv_label_set_text(lv_label_create(cont), "Display");
+    label = lv_label_create(cont);
+    lv_label_set_text(label, "Display");
+    lv_obj_add_style(cont, &ui->styles.small, 0);
+    lv_obj_add_style(label, &ui->styles.small, 0);
     lv_menu_set_load_page_event(menu, cont, page_display);
 
+    // Relay Configuration
     cont = lv_menu_cont_create(main_page);
-    lv_label_set_text(lv_label_create(cont), "Relay Configuration");
+    label = lv_label_create(cont);
+    lv_label_set_text(label, "Relay Configuration");
+    lv_obj_add_style(cont, &ui->styles.small, 0);
+    lv_obj_add_style(label, &ui->styles.small, 0);
     lv_menu_set_load_page_event(menu, cont, page_relay);
 
+    // System & Victron Key
     cont = lv_menu_cont_create(main_page);
-    lv_label_set_text(lv_label_create(cont), "System & Victron Key");
+    label = lv_label_create(cont);
+    lv_label_set_text(label, "System & Victron Key");
+    lv_obj_add_style(cont, &ui->styles.small, 0);
+    lv_obj_add_style(label, &ui->styles.small, 0);
     lv_menu_set_load_page_event(menu, cont, page_system);
+
 
     lv_menu_set_page(menu, main_page);
     create_wifi_settings_page(ui, page_wifi, default_ssid, default_pass, ap_enabled);
@@ -487,7 +511,6 @@ void ui_settings_panel_init(ui_state_t *ui,
     lv_obj_set_size(menu, lv_pct(100), lv_pct(100));
     lv_obj_align(menu, LV_ALIGN_CENTER, 0, 0);
     lv_obj_clear_flag(menu, LV_OBJ_FLAG_SCROLLABLE);
-
 
 }
 
@@ -1135,20 +1158,17 @@ static void relay_config_create_row(ui_state_t *ui, size_t index)
     lv_obj_set_style_pad_gap(row, 12, 0);
     lv_obj_set_flex_align(row, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
 
-    lv_obj_t *label = lv_label_create(row);
-    char caption[18];
-    snprintf(caption, sizeof(caption), "BTN %u:", (unsigned)(index + 1));
-    lv_label_set_text(label, caption);
-
     lv_obj_t *dropdown = lv_dropdown_create(row);
-    lv_obj_set_width(dropdown, 100);
+    lv_obj_set_width(dropdown, 150);
     lv_obj_add_event_cb(dropdown, relay_dropdown_event_cb, LV_EVENT_VALUE_CHANGED, ui);
+    lv_obj_add_style(dropdown, &ui->styles.small, 0);
 
     /* Add a textarea for an optional custom label */
     lv_obj_t *ta = lv_textarea_create(row);
-    lv_obj_set_width(ta, 120);
+    lv_obj_set_width(ta, 160);
     lv_textarea_set_one_line(ta, true);
     lv_textarea_set_placeholder_text(ta, "Label (optional)");
+    lv_obj_add_style(ta, &ui->styles.small, 0);
     /* If user previously set a custom label, show it; otherwise leave empty */
     if (index < UI_MAX_RELAY_BUTTONS && ui->relay_button_text[index][0] != '\0') {
         lv_textarea_set_text(ta, ui->relay_button_text[index]);
@@ -1161,7 +1181,6 @@ static void relay_config_create_row(ui_state_t *ui, size_t index)
     lv_obj_add_event_cb(ta, relay_label_ta_event_cb, LV_EVENT_READY, ui);
 
     ui->relay_config.rows[index] = row;
-    ui->relay_config.labels[index] = label;
     ui->relay_config.dropdowns[index] = dropdown;
     ui->relay_config.textareas[index] = ta;
 }
