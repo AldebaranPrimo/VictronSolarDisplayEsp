@@ -55,6 +55,7 @@ typedef struct ui_state {
     lv_obj_t *tabview;
     lv_obj_t *tab_live;
     lv_obj_t *tab_settings;
+    lv_obj_t *settings_menu;
     lv_obj_t *tab_relay;
     lv_obj_t *keyboard;
     ui_styles_t styles;

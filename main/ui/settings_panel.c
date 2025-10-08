@@ -56,102 +56,307 @@ static void relay_label_ta_event_cb(lv_event_t *e);
 static const uint8_t RELAY_GPIO_CHOICES[] = {5, 6, 7, 15, 16, 46, 9, 14};
 static const size_t RELAY_GPIO_COUNT = sizeof(RELAY_GPIO_CHOICES) / sizeof(RELAY_GPIO_CHOICES[0]);
 
-void ui_settings_panel_init(ui_state_t *ui,
-                            const char *default_ssid,
-                            const char *default_pass,
-                            uint8_t ap_enabled)
+static void create_wifi_settings_page(ui_state_t *ui, lv_obj_t *page_wifi,
+                                      const char *default_ssid,
+                                      const char *default_pass,
+                                      uint8_t ap_enabled)
 {
-    if (ui == NULL || ui->tab_settings == NULL) {
-        return;
-    }
+    /* Root layout container */
+    lv_obj_t *wifi_container = lv_obj_create(page_wifi);
+    lv_obj_remove_style_all(wifi_container);
+    lv_obj_set_size(wifi_container, lv_pct(100), LV_SIZE_CONTENT);
+    lv_obj_set_layout(wifi_container, LV_LAYOUT_FLEX);
+    lv_obj_set_flex_flow(wifi_container, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_style_pad_all(wifi_container, 10, 0);
+    lv_obj_set_style_pad_gap(wifi_container, 12, 0);
+    lv_obj_set_scroll_dir(wifi_container, LV_DIR_VER);
 
-    lv_obj_t *lbl_version = lv_label_create(ui->tab_settings);
-    lv_obj_add_style(lbl_version, &ui->styles.small, 0);
-    lv_label_set_text_fmt(lbl_version, "Version: %s", APP_VERSION);
-    lv_obj_align(lbl_version, LV_ALIGN_TOP_RIGHT, -8, 15);
-
-    lv_obj_t *lbl_ssid = lv_label_create(ui->tab_settings);
+    /* SSID label */
+    lv_obj_t *lbl_ssid = lv_label_create(wifi_container);
     lv_obj_add_style(lbl_ssid, &ui->styles.small, 0);
     lv_label_set_text(lbl_ssid, "AP SSID:");
-    lv_obj_align(lbl_ssid, LV_ALIGN_TOP_LEFT, 8, 15);
 
-    ui->wifi.ssid = lv_textarea_create(ui->tab_settings);
+    /* SSID input */
+    ui->wifi.ssid = lv_textarea_create(wifi_container);
     lv_textarea_set_one_line(ui->wifi.ssid, true);
-    lv_obj_set_width(ui->wifi.ssid, lv_pct(80));
+    lv_obj_set_width(ui->wifi.ssid, lv_pct(90));
     lv_textarea_set_text(ui->wifi.ssid, default_ssid);
-    lv_obj_align(ui->wifi.ssid, LV_ALIGN_TOP_LEFT, 8, 45);
     lv_obj_add_event_cb(ui->wifi.ssid, ta_event_cb, LV_EVENT_FOCUSED, ui);
     lv_obj_add_event_cb(ui->wifi.ssid, ta_event_cb, LV_EVENT_DEFOCUSED, ui);
     lv_obj_add_event_cb(ui->wifi.ssid, ta_event_cb, LV_EVENT_CANCEL, ui);
     lv_obj_add_event_cb(ui->wifi.ssid, ta_event_cb, LV_EVENT_READY, ui);
     lv_obj_add_event_cb(ui->wifi.ssid, wifi_event_cb, LV_EVENT_VALUE_CHANGED, ui);
 
-    lv_obj_t *lbl_pass = lv_label_create(ui->tab_settings);
+    /* Password label */
+    lv_obj_t *lbl_pass = lv_label_create(wifi_container);
     lv_obj_add_style(lbl_pass, &ui->styles.small, 0);
     lv_label_set_text(lbl_pass, "AP Password:");
-    lv_obj_align(lbl_pass, LV_ALIGN_TOP_LEFT, 8, 90);
 
     const char *ap_password = (default_pass && default_pass[0] != '\0') ? default_pass : DEFAULT_AP_PASSWORD;
 
-    ui->wifi.password = lv_textarea_create(ui->tab_settings);
+    /* Row for password + toggle button */
+    lv_obj_t *pass_row = lv_obj_create(wifi_container);
+    lv_obj_remove_style_all(pass_row);
+    lv_obj_set_width(pass_row, lv_pct(100));
+    lv_obj_set_height(pass_row, LV_SIZE_CONTENT);
+    lv_obj_set_layout(pass_row, LV_LAYOUT_FLEX);
+    lv_obj_set_flex_flow(pass_row, LV_FLEX_FLOW_ROW);
+    lv_obj_set_style_pad_gap(pass_row, 10, 0);
+    lv_obj_set_flex_align(pass_row, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+
+    /* Password textarea */
+    ui->wifi.password = lv_textarea_create(pass_row);
     lv_textarea_set_password_mode(ui->wifi.password, true);
     lv_textarea_set_one_line(ui->wifi.password, true);
-    lv_obj_set_width(ui->wifi.password, lv_pct(80));
+    lv_obj_set_width(ui->wifi.password, lv_pct(70));
     lv_textarea_set_text(ui->wifi.password, ap_password);
-    lv_obj_align(ui->wifi.password, LV_ALIGN_TOP_LEFT, 8, 120);
     lv_obj_add_event_cb(ui->wifi.password, ta_event_cb, LV_EVENT_FOCUSED, ui);
     lv_obj_add_event_cb(ui->wifi.password, ta_event_cb, LV_EVENT_DEFOCUSED, ui);
     lv_obj_add_event_cb(ui->wifi.password, ta_event_cb, LV_EVENT_CANCEL, ui);
     lv_obj_add_event_cb(ui->wifi.password, ta_event_cb, LV_EVENT_READY, ui);
     lv_obj_add_event_cb(ui->wifi.password, wifi_event_cb, LV_EVENT_VALUE_CHANGED, ui);
 
-    ui->wifi.password_toggle = lv_btn_create(ui->tab_settings);
-    lv_obj_align(ui->wifi.password_toggle, LV_ALIGN_TOP_LEFT, 240, 180);
-    lv_obj_set_width(ui->wifi.password_toggle, lv_pct(15));
+    /* Show/Hide password toggle */
+    ui->wifi.password_toggle = lv_btn_create(pass_row);
+    lv_obj_set_width(ui->wifi.password_toggle, lv_pct(20));
     lv_obj_add_event_cb(ui->wifi.password_toggle, password_toggle_btn_event_cb, LV_EVENT_CLICKED, ui);
 
     lv_obj_t *lbl_toggle = lv_label_create(ui->wifi.password_toggle);
     lv_label_set_text(lbl_toggle, "Show");
     lv_obj_center(lbl_toggle);
 
-    ui->wifi.ap_enable = lv_checkbox_create(ui->tab_settings);
+    /* AP enable checkbox */
+    ui->wifi.ap_enable = lv_checkbox_create(wifi_container);
     lv_checkbox_set_text(ui->wifi.ap_enable, "Enable AP");
     lv_obj_add_style(ui->wifi.ap_enable, &ui->styles.medium, 0);
     if (ap_enabled) {
         lv_obj_add_state(ui->wifi.ap_enable, LV_STATE_CHECKED);
     }
-    lv_obj_align(ui->wifi.ap_enable, LV_ALIGN_TOP_LEFT, 8, 180);
     lv_obj_add_event_cb(ui->wifi.ap_enable, ap_checkbox_event_cb, LV_EVENT_VALUE_CHANGED, ui);
+}
 
-    ui->lbl_error = lv_label_create(ui->tab_settings);
-    lv_obj_add_style(ui->lbl_error, &ui->styles.small, 0);
-    lv_label_set_text(ui->lbl_error, "Err: 0");
-    lv_obj_align(ui->lbl_error, LV_ALIGN_TOP_LEFT, 8, 850);
+static void create_display_settings_page(ui_state_t *ui, lv_obj_t *page_display)
+{
+    /* Root container for display settings */
+    lv_obj_t *disp_container = lv_obj_create(page_display);
+    lv_obj_remove_style_all(disp_container);
+    lv_obj_set_size(disp_container, lv_pct(100), LV_SIZE_CONTENT);
+    lv_obj_set_layout(disp_container, LV_LAYOUT_FLEX);
+    lv_obj_set_flex_flow(disp_container, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_style_pad_all(disp_container, 10, 0);
+    lv_obj_set_style_pad_gap(disp_container, 14, 0);
+    lv_obj_set_scroll_dir(disp_container, LV_DIR_VER);
 
-    ui->lbl_device_type = lv_label_create(ui->tab_settings);
+    /* --- Brightness --- */
+    lv_obj_t *lbl_brightness = lv_label_create(disp_container);
+    lv_obj_add_style(lbl_brightness, &ui->styles.small, 0);
+    lv_label_set_text(lbl_brightness, "Brightness:");
+
+    lv_obj_t *slider_brightness = lv_slider_create(disp_container);
+    lv_obj_set_width(slider_brightness, lv_pct(90));
+    lv_slider_set_range(slider_brightness, 1, 100);
+    lv_slider_set_value(slider_brightness, ui->brightness, LV_ANIM_OFF);
+    bsp_display_brightness_set(ui->brightness);
+    lv_obj_add_event_cb(slider_brightness, brightness_slider_event_cb, LV_EVENT_VALUE_CHANGED, ui);
+    lv_obj_add_style(slider_brightness, &ui->styles.medium, 0);
+
+    /* --- Screensaver enable --- */
+    ui->screensaver.checkbox = lv_checkbox_create(disp_container);
+    lv_checkbox_set_text(ui->screensaver.checkbox, "Enable Screensaver");
+    if (ui->screensaver.enabled) {
+        lv_obj_add_state(ui->screensaver.checkbox, LV_STATE_CHECKED);
+    }
+    lv_obj_add_event_cb(ui->screensaver.checkbox, cb_screensaver_event_cb, LV_EVENT_VALUE_CHANGED, ui);
+    lv_obj_add_style(ui->screensaver.checkbox, &ui->styles.medium, 0);
+
+    /* --- Screensaver brightness --- */
+    lv_obj_t *lbl_ss_brightness = lv_label_create(disp_container);
+    lv_obj_add_style(lbl_ss_brightness, &ui->styles.small, 0);
+    lv_label_set_text(lbl_ss_brightness, "Screensaver Brightness:");
+
+    ui->screensaver.slider_brightness = lv_slider_create(disp_container);
+    lv_obj_set_width(ui->screensaver.slider_brightness, lv_pct(90));
+    lv_slider_set_range(ui->screensaver.slider_brightness, 1, 100);
+    lv_slider_set_value(ui->screensaver.slider_brightness, ui->screensaver.brightness, LV_ANIM_OFF);
+    lv_obj_add_event_cb(ui->screensaver.slider_brightness, slider_ss_brightness_event_cb, LV_EVENT_VALUE_CHANGED, ui);
+    lv_obj_add_style(ui->screensaver.slider_brightness, &ui->styles.medium, 0);
+
+    /* --- Screensaver timeout section --- */
+    lv_obj_t *lbl_ss_time = lv_label_create(disp_container);
+    lv_obj_add_style(lbl_ss_time, &ui->styles.small, 0);
+    lv_label_set_text(lbl_ss_time, "Screensaver Timeout (s):");
+
+    /* Row container for spinbox + buttons */
+    lv_obj_t *timeout_row = lv_obj_create(disp_container);
+    lv_obj_remove_style_all(timeout_row);
+    lv_obj_set_width(timeout_row, lv_pct(100));
+    lv_obj_set_height(timeout_row, LV_SIZE_CONTENT);
+    lv_obj_set_layout(timeout_row, LV_LAYOUT_FLEX);
+    lv_obj_set_flex_flow(timeout_row, LV_FLEX_FLOW_ROW);
+    lv_obj_set_style_pad_gap(timeout_row, 10, 0);
+    lv_obj_set_flex_align(timeout_row, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+
+    /* Decrement button */
+    lv_obj_t *btn_dec = lv_btn_create(timeout_row);
+    lv_obj_set_size(btn_dec, 40, 40);
+    lv_obj_t *lbl_dec = lv_label_create(btn_dec);
+    lv_label_set_text(lbl_dec, LV_SYMBOL_MINUS);
+    lv_obj_center(lbl_dec);
+    lv_obj_add_event_cb(btn_dec, spinbox_ss_time_decrement_event_cb, LV_EVENT_ALL, ui);
+
+    /* Timeout spinbox */
+    ui->screensaver.spinbox_timeout = lv_spinbox_create(timeout_row);
+    lv_spinbox_set_range(ui->screensaver.spinbox_timeout, 5, 3600);
+    lv_spinbox_set_value(ui->screensaver.spinbox_timeout, ui->screensaver.timeout);
+    lv_spinbox_set_digit_format(ui->screensaver.spinbox_timeout, 4, 0);
+    lv_obj_set_width(ui->screensaver.spinbox_timeout, 120);
+    lv_obj_add_event_cb(ui->screensaver.spinbox_timeout, spinbox_ss_time_event_cb, LV_EVENT_VALUE_CHANGED, ui);
+
+    /* Increment button */
+    lv_obj_t *btn_inc = lv_btn_create(timeout_row);
+    lv_obj_set_size(btn_inc, 40, 40);
+    lv_obj_t *lbl_inc = lv_label_create(btn_inc);
+    lv_label_set_text(lbl_inc, LV_SYMBOL_PLUS);
+    lv_obj_center(lbl_inc);
+    lv_obj_add_event_cb(btn_inc, spinbox_ss_time_increment_event_cb, LV_EVENT_ALL, ui);
+
+    /* --- Timer setup --- */
+    ui->screensaver.timer = lv_timer_create(screensaver_timer_cb,
+                                            ui->screensaver.timeout * 1000,
+                                            ui);
+    if (ui->screensaver.enabled) {
+        lv_timer_reset(ui->screensaver.timer);
+        lv_timer_resume(ui->screensaver.timer);
+    } else {
+        lv_timer_pause(ui->screensaver.timer);
+    }
+}
+
+
+static void create_relay_settings_page(ui_state_t *ui, lv_obj_t *page_relay)
+{
+    /* Root container for relay settings */
+    lv_obj_t *relay_container = lv_obj_create(page_relay);
+    lv_obj_remove_style_all(relay_container);
+    lv_obj_set_size(relay_container, lv_pct(100), LV_SIZE_CONTENT);
+    lv_obj_set_layout(relay_container, LV_LAYOUT_FLEX);
+    lv_obj_set_flex_flow(relay_container, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_style_pad_all(relay_container, 10, 0);
+    lv_obj_set_style_pad_gap(relay_container, 14, 0);
+    lv_obj_set_scroll_dir(relay_container, LV_DIR_VER);
+
+    /* --- Relay tab enable section --- */
+    lv_obj_t *lbl_relay_tab = lv_label_create(relay_container);
+    lv_obj_add_style(lbl_relay_tab, &ui->styles.small, 0);
+    lv_label_set_text(lbl_relay_tab, "Relay Tab:");
+
+    ui->relay_checkbox = lv_checkbox_create(relay_container);
+    lv_checkbox_set_text(ui->relay_checkbox, "Enable Relay Tab");
+    lv_obj_add_style(ui->relay_checkbox, &ui->styles.medium, 0);
+    lv_obj_add_event_cb(ui->relay_checkbox, relay_tab_checkbox_event_cb, LV_EVENT_VALUE_CHANGED, ui);
+
+    /* --- Relay configuration section --- */
+    lv_obj_t *relay_section = lv_obj_create(relay_container);
+    lv_obj_remove_style_all(relay_section);
+    lv_obj_set_width(relay_section, lv_pct(100));
+    lv_obj_set_height(relay_section, LV_SIZE_CONTENT);
+    lv_obj_set_layout(relay_section, LV_LAYOUT_FLEX);
+    lv_obj_set_flex_flow(relay_section, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_style_pad_gap(relay_section, 14, 0);
+    ui->relay_config.container = relay_section;
+
+    /* --- Row for Add / Remove buttons --- */
+    lv_obj_t *controls_row = lv_obj_create(relay_section);
+    lv_obj_remove_style_all(controls_row);
+    lv_obj_set_width(controls_row, lv_pct(100));
+    lv_obj_set_height(controls_row, LV_SIZE_CONTENT);
+    lv_obj_set_layout(controls_row, LV_LAYOUT_FLEX);
+    lv_obj_set_flex_flow(controls_row, LV_FLEX_FLOW_ROW);
+    lv_obj_set_style_pad_gap(controls_row, 10, 0);
+    lv_obj_set_flex_align(controls_row, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+
+    /* Add button */
+    ui->relay_config.add_btn = lv_btn_create(controls_row);
+    lv_obj_set_size(ui->relay_config.add_btn, 48, 48);
+    lv_obj_t *lbl_add = lv_label_create(ui->relay_config.add_btn);
+    lv_label_set_text(lbl_add, LV_SYMBOL_PLUS);
+    lv_obj_center(lbl_add);
+    lv_obj_add_event_cb(ui->relay_config.add_btn, relay_config_add_btn_event_cb, LV_EVENT_CLICKED, ui);
+
+    /* Remove button */
+    ui->relay_config.remove_btn = lv_btn_create(controls_row);
+    lv_obj_set_size(ui->relay_config.remove_btn, 48, 48);
+    lv_obj_t *lbl_remove = lv_label_create(ui->relay_config.remove_btn);
+    lv_label_set_text(lbl_remove, LV_SYMBOL_MINUS);
+    lv_obj_center(lbl_remove);
+    lv_obj_add_event_cb(ui->relay_config.remove_btn, relay_config_remove_btn_event_cb, LV_EVENT_CLICKED, ui);
+
+    /* --- Relay list section --- */
+    ui->relay_config.list = lv_obj_create(relay_section);
+    lv_obj_remove_style_all(ui->relay_config.list);
+    lv_obj_set_width(ui->relay_config.list, lv_pct(100));
+    lv_obj_set_height(ui->relay_config.list, LV_SIZE_CONTENT);
+    lv_obj_set_layout(ui->relay_config.list, LV_LAYOUT_FLEX);
+    lv_obj_set_flex_flow(ui->relay_config.list, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_style_pad_gap(ui->relay_config.list, 10, 0);
+    lv_obj_set_scroll_dir(ui->relay_config.list, LV_DIR_VER);
+
+    /* --- Populate existing relay rows --- */
+    for (size_t i = 0; i < ui->relay_config.count; ++i) {
+        relay_config_create_row(ui, i);
+    }
+
+    /* --- Apply saved state --- */
+    apply_relay_tab_state(ui, ui->relay_tab_enabled, true);
+    relay_config_refresh_dropdowns(ui);
+    relay_config_update_controls(ui);
+}
+
+
+static void create_system_settings_page(ui_state_t *ui, lv_obj_t *page_system)
+{
+    /* Root container */
+    lv_obj_t *sys_container = lv_obj_create(page_system);
+    lv_obj_remove_style_all(sys_container);
+    lv_obj_set_size(sys_container, lv_pct(100), LV_SIZE_CONTENT);
+    lv_obj_set_layout(sys_container, LV_LAYOUT_FLEX);
+    lv_obj_set_flex_flow(sys_container, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_style_pad_all(sys_container, 10, 0);
+    lv_obj_set_style_pad_gap(sys_container, 14, 0);
+    lv_obj_set_scroll_dir(sys_container, LV_DIR_VER);
+
+    /* --- Version Label --- */
+    lv_obj_t *lbl_version = lv_label_create(sys_container);
+    lv_obj_add_style(lbl_version, &ui->styles.small, 0);
+    lv_label_set_text_fmt(lbl_version, "Version: %s", APP_VERSION);
+
+    /* --- Device Info Section --- */
+    ui->lbl_device_type = lv_label_create(sys_container);
     lv_obj_add_style(ui->lbl_device_type, &ui->styles.small, 0);
     lv_label_set_text(ui->lbl_device_type, "Device: --");
-    lv_obj_align(ui->lbl_device_type, LV_ALIGN_TOP_LEFT, 8, 820);
 
-    lv_obj_t *lmac = lv_label_create(ui->tab_settings);
-    lv_obj_add_style(lmac, &ui->styles.small, 0);
-    lv_label_set_text(lmac, "MAC Address:");
-    lv_obj_align(lmac, LV_ALIGN_TOP_LEFT, 8, 250);
+    ui->lbl_error = lv_label_create(sys_container);
+    lv_obj_add_style(ui->lbl_error, &ui->styles.small, 0);
+    lv_label_set_text(ui->lbl_error, "Err: 0");
 
-    ui->ta_mac = lv_textarea_create(ui->tab_settings);
+    /* --- MAC Address --- */
+    lv_obj_t *lbl_mac = lv_label_create(sys_container);
+    lv_obj_add_style(lbl_mac, &ui->styles.small, 0);
+    lv_label_set_text(lbl_mac, "MAC Address:");
+
+    ui->ta_mac = lv_textarea_create(sys_container);
     lv_textarea_set_one_line(ui->ta_mac, true);
-    lv_obj_set_width(ui->ta_mac, lv_pct(80));
+    lv_obj_set_width(ui->ta_mac, lv_pct(90));
     lv_textarea_set_text(ui->ta_mac, "00:00:00:00:00:00");
-    lv_obj_align(ui->ta_mac, LV_ALIGN_TOP_LEFT, 8, 280);
     lv_obj_add_event_cb(ui->ta_mac, ta_event_cb, LV_EVENT_FOCUSED, ui);
     lv_obj_add_event_cb(ui->ta_mac, ta_event_cb, LV_EVENT_DEFOCUSED, ui);
     lv_obj_add_event_cb(ui->ta_mac, ta_event_cb, LV_EVENT_CANCEL, ui);
     lv_obj_add_event_cb(ui->ta_mac, ta_event_cb, LV_EVENT_READY, ui);
 
-    lv_obj_t *lkey = lv_label_create(ui->tab_settings);
-    lv_obj_add_style(lkey, &ui->styles.small, 0);
-    lv_label_set_text(lkey, "AES Key:");
-    lv_obj_align(lkey, LV_ALIGN_TOP_LEFT, 8, 320);
+    /* --- AES Key --- */
+    lv_obj_t *lbl_key = lv_label_create(sys_container);
+    lv_obj_add_style(lbl_key, &ui->styles.small, 0);
+    lv_label_set_text(lbl_key, "AES Key:");
 
     uint8_t aes_key_bin[16] = {0};
     char aes_key_hex[33] = {0};
@@ -163,188 +368,107 @@ void ui_settings_panel_init(ui_state_t *ui,
         strcpy(aes_key_hex, "00000000000000000000000000000000");
     }
 
-    ui->ta_key = lv_textarea_create(ui->tab_settings);
+    ui->ta_key = lv_textarea_create(sys_container);
     lv_textarea_set_one_line(ui->ta_key, true);
-    lv_obj_set_width(ui->ta_key, lv_pct(80));
+    lv_obj_set_width(ui->ta_key, lv_pct(90));
     lv_textarea_set_text(ui->ta_key, aes_key_hex);
-    lv_obj_align(ui->ta_key, LV_ALIGN_TOP_LEFT, 8, 350);
     lv_obj_add_event_cb(ui->ta_key, ta_event_cb, LV_EVENT_FOCUSED, ui);
     lv_obj_add_event_cb(ui->ta_key, ta_event_cb, LV_EVENT_DEFOCUSED, ui);
     lv_obj_add_event_cb(ui->ta_key, ta_event_cb, LV_EVENT_CANCEL, ui);
     lv_obj_add_event_cb(ui->ta_key, ta_event_cb, LV_EVENT_READY, ui);
 
-    lv_obj_t *btn_save_key = lv_btn_create(ui->tab_settings);
-    lv_obj_align(btn_save_key, LV_ALIGN_TOP_LEFT, 8, 400);
-    lv_obj_set_width(btn_save_key, lv_pct(18));
-    lv_obj_t *lbl_btn = lv_label_create(btn_save_key);
-    lv_label_set_text(lbl_btn, "Save");
-    lv_obj_center(lbl_btn);
+    /* --- Buttons Row (Save + Reboot) --- */
+    lv_obj_t *btn_row = lv_obj_create(sys_container);
+    lv_obj_remove_style_all(btn_row);
+    lv_obj_set_width(btn_row, lv_pct(100));
+    lv_obj_set_height(btn_row, LV_SIZE_CONTENT);
+    lv_obj_set_layout(btn_row, LV_LAYOUT_FLEX);
+    lv_obj_set_flex_flow(btn_row, LV_FLEX_FLOW_ROW);
+    lv_obj_set_style_pad_gap(btn_row, 10, 0);
+    lv_obj_set_flex_align(btn_row, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+
+    /* Save Key Button */
+    lv_obj_t *btn_save_key = lv_btn_create(btn_row);
+    lv_obj_set_size(btn_save_key, 100, 45);
+    lv_obj_t *lbl_save = lv_label_create(btn_save_key);
+    lv_label_set_text(lbl_save, "Save");
+    lv_obj_center(lbl_save);
     lv_obj_add_event_cb(btn_save_key, save_key_btn_event_cb, LV_EVENT_CLICKED, ui);
 
-    lv_obj_t *btn_reboot = lv_btn_create(ui->tab_settings);
-    lv_obj_align(btn_reboot, LV_ALIGN_TOP_LEFT, 8 + lv_pct(20), 400);
-    lv_obj_set_width(btn_reboot, lv_pct(18));
+    /* Reboot Button */
+    lv_obj_t *btn_reboot = lv_btn_create(btn_row);
+    lv_obj_set_size(btn_reboot, 100, 45);
     lv_obj_t *lbl_reboot = lv_label_create(btn_reboot);
     lv_label_set_text(lbl_reboot, "Reboot");
     lv_obj_center(lbl_reboot);
     lv_obj_add_event_cb(btn_reboot, reboot_btn_event_cb, LV_EVENT_CLICKED, ui);
 
-    // Create Victron debug checkbox and load stored debug flag from NVS
-    ui->victron_debug_checkbox = lv_checkbox_create(ui->tab_settings);
+    /* --- Victron Debug Checkbox --- */
+    ui->victron_debug_checkbox = lv_checkbox_create(sys_container);
     lv_checkbox_set_text(ui->victron_debug_checkbox, "Enable Victron BLE Debug");
     lv_obj_add_style(ui->victron_debug_checkbox, &ui->styles.medium, 0);
-    lv_obj_align(ui->victron_debug_checkbox, LV_ALIGN_TOP_LEFT, 8, 900);
     lv_obj_add_event_cb(ui->victron_debug_checkbox, victron_debug_event_cb, LV_EVENT_VALUE_CHANGED, ui);
 
     bool dbg = false;
     if (load_victron_debug(&dbg) == ESP_OK) {
         ui->victron_debug_enabled = dbg;
-        if (dbg && ui->victron_debug_checkbox) lv_obj_add_state(ui->victron_debug_checkbox, LV_STATE_CHECKED);
+        if (dbg) {
+            lv_obj_add_state(ui->victron_debug_checkbox, LV_STATE_CHECKED);
+        }
     } else {
         ui->victron_debug_enabled = false;
     }
-    // Ensure BLE module matches persisted UI setting
+
+    /* Apply setting immediately to BLE module */
     victron_ble_set_debug(ui->victron_debug_enabled);
+}
 
-    lv_obj_t *lbl_brightness = lv_label_create(ui->tab_settings);
-    lv_obj_add_style(lbl_brightness, &ui->styles.small, 0);
-    lv_label_set_text(lbl_brightness, "Brightness:");
-    lv_obj_align(lbl_brightness, LV_ALIGN_TOP_LEFT, 8, 450);
 
-    lv_obj_t *slider = lv_slider_create(ui->tab_settings);
-    lv_obj_set_width(slider, lv_pct(80));
-    lv_obj_align(slider, LV_ALIGN_TOP_LEFT, 8, 500);
-    lv_slider_set_range(slider, 1, 100);
-    lv_slider_set_value(slider, ui->brightness, LV_ANIM_OFF);
-    bsp_display_brightness_set(ui->brightness);
-    lv_obj_add_event_cb(slider, brightness_slider_event_cb, LV_EVENT_VALUE_CHANGED, ui);
-    lv_obj_add_style(slider, &ui->styles.medium, 0);
-
-    lv_obj_t *spacer = lv_obj_create(ui->tab_settings);
-    lv_obj_set_size(spacer, 10, 40);
-    lv_obj_align(spacer, LV_ALIGN_TOP_LEFT, 8, 550);
-    lv_obj_add_flag(spacer, LV_OBJ_FLAG_HIDDEN | LV_OBJ_FLAG_EVENT_BUBBLE);
-
-    ui->screensaver.checkbox = lv_checkbox_create(ui->tab_settings);
-    lv_checkbox_set_text(ui->screensaver.checkbox, "Enable Screensaver");
-    if (ui->screensaver.enabled) {
-        lv_obj_add_state(ui->screensaver.checkbox, LV_STATE_CHECKED);
-    }
-    lv_obj_align(ui->screensaver.checkbox, LV_ALIGN_TOP_LEFT, 8, 600);
-    lv_obj_add_event_cb(ui->screensaver.checkbox, cb_screensaver_event_cb, LV_EVENT_VALUE_CHANGED, ui);
-    lv_obj_add_style(ui->screensaver.checkbox, &ui->styles.medium, 0);
-
-    
-    lv_obj_t *lbl_ss_brightness = lv_label_create(ui->tab_settings);
-    lv_obj_add_style(lbl_ss_brightness, &ui->styles.small, 0);
-    lv_label_set_text(lbl_ss_brightness, "Screensaver Brightness:");
-    lv_obj_align(lbl_ss_brightness, LV_ALIGN_TOP_LEFT, 8, 650);
-
-    ui->screensaver.slider_brightness = lv_slider_create(ui->tab_settings);
-    lv_obj_set_width(ui->screensaver.slider_brightness, lv_pct(80));
-    lv_obj_align(ui->screensaver.slider_brightness, LV_ALIGN_TOP_LEFT, 8, 680);
-    lv_slider_set_range(ui->screensaver.slider_brightness, 1, 100);
-    lv_slider_set_value(ui->screensaver.slider_brightness, ui->screensaver.brightness, LV_ANIM_OFF);
-    lv_obj_add_event_cb(ui->screensaver.slider_brightness, slider_ss_brightness_event_cb, LV_EVENT_VALUE_CHANGED, ui);
-    lv_obj_add_style(ui->screensaver.slider_brightness, &ui->styles.medium, 0);
-
-    lv_obj_t *lbl_ss_time = lv_label_create(ui->tab_settings);
-    lv_obj_add_style(lbl_ss_time, &ui->styles.small, 0);
-    lv_label_set_text(lbl_ss_time, "Screensaver Timeout (s):");
-    lv_obj_align(lbl_ss_time, LV_ALIGN_TOP_LEFT, 8, 730);
-
-    ui->screensaver.spinbox_timeout = lv_spinbox_create(ui->tab_settings);
-    lv_spinbox_set_range(ui->screensaver.spinbox_timeout, 5, 3600);
-    lv_spinbox_set_value(ui->screensaver.spinbox_timeout, ui->screensaver.timeout);
-    lv_spinbox_set_digit_format(ui->screensaver.spinbox_timeout, 4, 0);
-    lv_obj_set_width(ui->screensaver.spinbox_timeout, 100);
-    lv_obj_align(ui->screensaver.spinbox_timeout, LV_ALIGN_TOP_LEFT, 48, 760);
-    lv_obj_add_event_cb(ui->screensaver.spinbox_timeout, spinbox_ss_time_event_cb, LV_EVENT_VALUE_CHANGED, ui);
-
-    lv_coord_t h = lv_obj_get_height(ui->screensaver.spinbox_timeout);
-
-    lv_obj_t *btn_dec = lv_btn_create(ui->tab_settings);
-    lv_obj_set_size(btn_dec, h, h);
-    lv_obj_align_to(btn_dec, ui->screensaver.spinbox_timeout, LV_ALIGN_OUT_LEFT_MID, -5, 0);
-    lv_obj_set_style_bg_img_src(btn_dec, LV_SYMBOL_MINUS, 0);
-    lv_obj_add_event_cb(btn_dec, spinbox_ss_time_decrement_event_cb, LV_EVENT_ALL, ui);
-
-    lv_obj_t *btn_inc = lv_btn_create(ui->tab_settings);
-    lv_obj_set_size(btn_inc, h, h);
-    lv_obj_align_to(btn_inc, ui->screensaver.spinbox_timeout, LV_ALIGN_OUT_RIGHT_MID, 5, 0);
-    lv_obj_set_style_bg_img_src(btn_inc, LV_SYMBOL_PLUS, 0);
-    lv_obj_add_event_cb(btn_inc, spinbox_ss_time_increment_event_cb, LV_EVENT_ALL, ui);
-
-    // Debug checkbox already created earlier and initialized; don't recreate it here.
-
-    lv_obj_t *lbl_relay_tab = lv_label_create(ui->tab_settings);
-    lv_obj_add_style(lbl_relay_tab, &ui->styles.small, 0);
-    lv_label_set_text(lbl_relay_tab, "Relay Tab:");
-    lv_obj_align(lbl_relay_tab, LV_ALIGN_TOP_LEFT, 8, 950);
-
-    ui->relay_checkbox = lv_checkbox_create(ui->tab_settings);
-    lv_checkbox_set_text(ui->relay_checkbox, "Enable Relay Tab");
-    lv_obj_add_style(ui->relay_checkbox, &ui->styles.medium, 0);
-    lv_obj_align(ui->relay_checkbox, LV_ALIGN_TOP_LEFT, 8, 980);
-    lv_obj_add_event_cb(ui->relay_checkbox, relay_tab_checkbox_event_cb, LV_EVENT_VALUE_CHANGED, ui);
-
-    lv_obj_t *relay_section = lv_obj_create(ui->tab_settings);
-    lv_obj_remove_style_all(relay_section);
-    lv_obj_set_width(relay_section, lv_pct(90));
-    lv_obj_set_height(relay_section, LV_SIZE_CONTENT);
-    lv_obj_align(relay_section, LV_ALIGN_TOP_LEFT, 8, 1020);
-    lv_obj_set_layout(relay_section, LV_LAYOUT_FLEX);
-    lv_obj_set_flex_flow(relay_section, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_style_pad_gap(relay_section, 12, 0);
-    ui->relay_config.container = relay_section;
-
-    lv_obj_t *controls_row = lv_obj_create(relay_section);
-    lv_obj_remove_style_all(controls_row);
-    lv_obj_set_width(controls_row, lv_pct(100));
-    lv_obj_set_height(controls_row, LV_SIZE_CONTENT);
-    lv_obj_set_layout(controls_row, LV_LAYOUT_FLEX);
-    lv_obj_set_flex_flow(controls_row, LV_FLEX_FLOW_ROW);
-    lv_obj_set_style_pad_gap(controls_row, 12, 0);
-
-    ui->relay_config.add_btn = lv_btn_create(controls_row);
-    lv_obj_set_size(ui->relay_config.add_btn, 48, 48);
-    lv_obj_t *lbl_add = lv_label_create(ui->relay_config.add_btn);
-    lv_label_set_text(lbl_add, "+");
-    lv_obj_center(lbl_add);
-    lv_obj_add_event_cb(ui->relay_config.add_btn, relay_config_add_btn_event_cb, LV_EVENT_CLICKED, ui);
-
-    ui->relay_config.remove_btn = lv_btn_create(controls_row);
-    lv_obj_set_size(ui->relay_config.remove_btn, 48, 48);
-    lv_obj_t *lbl_remove = lv_label_create(ui->relay_config.remove_btn);
-    lv_label_set_text(lbl_remove, "-");
-    lv_obj_center(lbl_remove);
-    lv_obj_add_event_cb(ui->relay_config.remove_btn, relay_config_remove_btn_event_cb, LV_EVENT_CLICKED, ui);
-
-    ui->relay_config.list = lv_obj_create(relay_section);
-    lv_obj_remove_style_all(ui->relay_config.list);
-    lv_obj_set_width(ui->relay_config.list, lv_pct(100));
-    lv_obj_set_height(ui->relay_config.list, LV_SIZE_CONTENT);
-    lv_obj_set_layout(ui->relay_config.list, LV_LAYOUT_FLEX);
-    lv_obj_set_flex_flow(ui->relay_config.list, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_style_pad_gap(ui->relay_config.list, 8, 0);
-
-    for (size_t i = 0; i < ui->relay_config.count; ++i) {
-        relay_config_create_row(ui, i);
+void ui_settings_panel_init(ui_state_t *ui,
+                            const char *default_ssid,
+                            const char *default_pass,
+                            uint8_t ap_enabled)
+{
+    if (ui == NULL || ui->tab_settings == NULL) {
+        return;
     }
 
-    apply_relay_tab_state(ui, ui->relay_tab_enabled, true);
-    relay_config_refresh_dropdowns(ui);
-    relay_config_update_controls(ui);
+    lv_obj_t *menu = lv_menu_create(ui->tab_settings);
+    lv_obj_set_size(menu, lv_pct(100), lv_pct(100));
+    lv_obj_center(menu);
+    ui->settings_menu = menu;
 
-    ui->screensaver.timer = lv_timer_create(screensaver_timer_cb,
-                                            ui->screensaver.timeout * 1000,
-                                            ui);
-    if (ui->screensaver.enabled) {
-        lv_timer_reset(ui->screensaver.timer);
-        lv_timer_resume(ui->screensaver.timer);
-    } else {
-        lv_timer_pause(ui->screensaver.timer);
-    }
+    lv_obj_t *back_btn = lv_menu_get_main_header_back_btn(menu);
+    lv_label_set_text(lv_label_create(back_btn), "Back");
+
+    lv_obj_t *main_page = lv_menu_page_create(menu, NULL);
+    lv_obj_t *page_wifi = lv_menu_page_create(menu, "Wi-Fi");
+    lv_obj_t *page_display = lv_menu_page_create(menu, "Display");
+    lv_obj_t *page_relay = lv_menu_page_create(menu, "Relay");
+    lv_obj_t *page_system = lv_menu_page_create(menu, "System");
+
+    lv_obj_t *cont = lv_menu_cont_create(main_page);
+    lv_label_set_text(lv_label_create(cont), "Wi-Fi Settings");
+    lv_menu_set_load_page_event(menu, cont, page_wifi);
+
+    cont = lv_menu_cont_create(main_page);
+    lv_label_set_text(lv_label_create(cont), "Display");
+    lv_menu_set_load_page_event(menu, cont, page_display);
+
+    cont = lv_menu_cont_create(main_page);
+    lv_label_set_text(lv_label_create(cont), "Relay Configuration");
+    lv_menu_set_load_page_event(menu, cont, page_relay);
+
+    cont = lv_menu_cont_create(main_page);
+    lv_label_set_text(lv_label_create(cont), "System");
+    lv_menu_set_load_page_event(menu, cont, page_system);
+
+    lv_menu_set_page(menu, main_page);
+    create_wifi_settings_page(ui, page_wifi, default_ssid, default_pass, ap_enabled);
+    create_display_settings_page(ui, page_display);
+    create_relay_settings_page(ui, page_relay);
+    create_system_settings_page(ui, page_system);
+
 }
 
 void ui_settings_panel_on_user_activity(ui_state_t *ui)
