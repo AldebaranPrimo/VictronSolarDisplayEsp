@@ -44,30 +44,31 @@ static const char *solar_error_string(uint8_t code);
 static const char *solar_state_string(uint8_t state);
 
 static const ui_label_descriptor_t solar_primary_descriptors[SOLAR_LABEL_COUNT] = {
-    { "battery_voltage", "Batt V", format_battery_voltage },
-    { "battery_current", "Batt A", format_battery_current },
-    { "load_current", "Load A", format_load_current },
+    { "battery_voltage", "BAT V", format_battery_voltage },
+    { "battery_current", "BAT C", format_battery_current },
+    { "load_current", "LOAD", format_load_current },
 };
 
 static lv_obj_t *create_label_box(ui_state_t *ui, lv_obj_t *parent,
                                   const ui_label_descriptor_t *desc)
 {
     lv_obj_t *box = lv_obj_create(parent);
-    lv_obj_set_size(box, lv_pct(30), 80);
+    lv_obj_set_size(box, lv_pct(30), 100);
     lv_obj_set_style_pad_all(box, 8, 0);
     lv_obj_set_style_bg_opa(box, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(box, 0, 0);
     lv_obj_set_style_outline_width(box, 0, 0);
+    lv_obj_clear_flag(box, LV_OBJ_FLAG_SCROLLABLE);
 
     lv_obj_t *header = lv_label_create(box);
     lv_label_set_text(header, desc->title ? desc->title : "");
     lv_obj_add_style(header, &ui->styles.medium, 0);
-    lv_obj_align(header, LV_ALIGN_TOP_MID, 0, 0);
+    lv_obj_align(header, LV_ALIGN_TOP_MID, 0, 5);
 
     lv_obj_t *value = lv_label_create(box);
     lv_label_set_text(value, "--");
-    lv_obj_add_style(value, &ui->styles.medium, 0);
-    lv_obj_align(value, LV_ALIGN_CENTER, 0, 10);
+    lv_obj_add_style(value, &ui->styles.value, 0);
+    lv_obj_align(value, LV_ALIGN_BOTTOM_MID, 0, -5);
 
     return value;
 }
@@ -122,7 +123,6 @@ ui_device_view_t *ui_solar_view_create(ui_state_t *ui, lv_obj_t *parent)
                           LV_FLEX_ALIGN_CENTER,
                           LV_FLEX_ALIGN_CENTER);
     lv_obj_clear_flag(view->row_primary, LV_OBJ_FLAG_SCROLLABLE);
-    // lv_obj_set_style_bg_color(view->row_primary, lv_color_hex(0x223355), 0);
     lv_obj_set_style_border_width(view->row_primary, 0, 0);
     lv_obj_set_style_outline_width(view->row_primary, 0, 0);
 
@@ -149,7 +149,7 @@ ui_device_view_t *ui_solar_view_create(ui_state_t *ui, lv_obj_t *parent)
     view->bottom_labels[SOLAR_BOTTOM_SOLAR_POWER] = lv_label_create(view->base.root);
     lv_obj_add_style(view->bottom_labels[SOLAR_BOTTOM_SOLAR_POWER], &ui->styles.small, 0);
     lv_label_set_text(view->bottom_labels[SOLAR_BOTTOM_SOLAR_POWER], "");
-    lv_obj_align(view->bottom_labels[SOLAR_BOTTOM_SOLAR_POWER], LV_ALIGN_BOTTOM_LEFT, 32, -8);
+    lv_obj_align(view->bottom_labels[SOLAR_BOTTOM_SOLAR_POWER], LV_ALIGN_BOTTOM_LEFT, 20, -8);
 
     view->bottom_labels[SOLAR_BOTTOM_YIELD] = lv_label_create(view->base.root);
     lv_obj_add_style(view->bottom_labels[SOLAR_BOTTOM_YIELD], &ui->styles.small, 0);
@@ -159,7 +159,7 @@ ui_device_view_t *ui_solar_view_create(ui_state_t *ui, lv_obj_t *parent)
     view->bottom_labels[SOLAR_BOTTOM_LOAD_POWER] = lv_label_create(view->base.root);
     lv_obj_add_style(view->bottom_labels[SOLAR_BOTTOM_LOAD_POWER], &ui->styles.small, 0);
     lv_label_set_text(view->bottom_labels[SOLAR_BOTTOM_LOAD_POWER], "");
-    lv_obj_align(view->bottom_labels[SOLAR_BOTTOM_LOAD_POWER], LV_ALIGN_BOTTOM_RIGHT, -31, -8);
+    lv_obj_align(view->bottom_labels[SOLAR_BOTTOM_LOAD_POWER], LV_ALIGN_BOTTOM_RIGHT, -20, -8);
 
     view->base.update = solar_view_update;
     view->base.show = solar_view_show;
