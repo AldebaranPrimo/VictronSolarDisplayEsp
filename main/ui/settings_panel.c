@@ -346,7 +346,7 @@ static void create_system_settings_page(ui_state_t *ui, lv_obj_t *page_system)
 
     ui->ta_mac = lv_textarea_create(sys_container);
     lv_textarea_set_one_line(ui->ta_mac, true);
-    lv_obj_set_width(ui->ta_mac, lv_pct(90));
+    lv_obj_set_width(ui->ta_mac, lv_pct(50));
     lv_textarea_set_text(ui->ta_mac, "00:00:00:00:00:00");
     lv_obj_add_event_cb(ui->ta_mac, ta_event_cb, LV_EVENT_FOCUSED, ui);
     lv_obj_add_event_cb(ui->ta_mac, ta_event_cb, LV_EVENT_DEFOCUSED, ui);
@@ -370,7 +370,7 @@ static void create_system_settings_page(ui_state_t *ui, lv_obj_t *page_system)
 
     ui->ta_key = lv_textarea_create(sys_container);
     lv_textarea_set_one_line(ui->ta_key, true);
-    lv_obj_set_width(ui->ta_key, lv_pct(90));
+    lv_obj_set_width(ui->ta_key, lv_pct(80));
     lv_textarea_set_text(ui->ta_key, aes_key_hex);
     lv_obj_add_event_cb(ui->ta_key, ta_event_cb, LV_EVENT_FOCUSED, ui);
     lv_obj_add_event_cb(ui->ta_key, ta_event_cb, LV_EVENT_DEFOCUSED, ui);
@@ -1117,16 +1117,16 @@ static void relay_config_create_row(ui_state_t *ui, size_t index)
 
     lv_obj_t *label = lv_label_create(row);
     char caption[18];
-    snprintf(caption, sizeof(caption), "Button %u:", (unsigned)(index + 1));
+    snprintf(caption, sizeof(caption), "BTN %u:", (unsigned)(index + 1));
     lv_label_set_text(label, caption);
 
     lv_obj_t *dropdown = lv_dropdown_create(row);
-    lv_obj_set_width(dropdown, 140);
+    lv_obj_set_width(dropdown, 100);
     lv_obj_add_event_cb(dropdown, relay_dropdown_event_cb, LV_EVENT_VALUE_CHANGED, ui);
 
     /* Add a textarea for an optional custom label */
     lv_obj_t *ta = lv_textarea_create(row);
-    lv_obj_set_width(ta, 140);
+    lv_obj_set_width(ta, 120);
     lv_textarea_set_one_line(ta, true);
     lv_textarea_set_placeholder_text(ta, "Label (optional)");
     /* If user previously set a custom label, show it; otherwise leave empty */
