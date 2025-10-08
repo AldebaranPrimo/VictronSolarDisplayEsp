@@ -13,7 +13,7 @@ struct ui_device_view;
 #define UI_RELAY_GPIO_UNASSIGNED UINT8_MAX
 
 typedef struct {
-    lv_style_t title;
+    lv_style_t small;
     lv_style_t value;
     lv_style_t big;
     lv_style_t medium;
@@ -55,6 +55,7 @@ typedef struct ui_state {
     lv_obj_t *tabview;
     lv_obj_t *tab_live;
     lv_obj_t *tab_settings;
+    lv_obj_t *settings_menu;
     lv_obj_t *tab_relay;
     lv_obj_t *keyboard;
     ui_styles_t styles;
