@@ -91,10 +91,10 @@ ui_device_view_t *ui_battery_view_create(ui_state_t *ui, lv_obj_t *parent)
     lv_obj_set_style_bg_opa(view->base.root, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(view->base.root, 0, 0);
     lv_obj_set_style_outline_width(view->base.root, 0, 0);
-    lv_obj_set_style_pad_all(view->base.root, 12, 0);
+    lv_obj_set_style_pad_all(view->base.root, 0, 0);
     lv_obj_clear_flag(view->base.root, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_set_flex_flow(view->base.root, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_style_pad_row(view->base.root, 18, 0);
+    lv_obj_set_style_pad_row(view->base.root, 12, 0);
     lv_obj_add_flag(view->base.root, LV_OBJ_FLAG_HIDDEN);
 
     view->row_primary = lv_obj_create(view->base.root);
@@ -105,11 +105,10 @@ ui_device_view_t *ui_battery_view_create(ui_state_t *ui, lv_obj_t *parent)
                           LV_FLEX_ALIGN_CENTER,
                           LV_FLEX_ALIGN_CENTER);
     lv_obj_clear_flag(view->row_primary, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_set_style_bg_color(view->row_primary, lv_color_hex(0x223355), 0);
     lv_obj_set_style_border_width(view->row_primary, 0, 0);
     lv_obj_set_style_outline_width(view->row_primary, 0, 0);
-    lv_obj_set_style_pad_all(view->row_primary, 12, 0);
-    lv_obj_set_style_pad_column(view->row_primary, 16, 0);
+    lv_obj_set_style_pad_all(view->row_primary, 0, 0);
+    lv_obj_set_style_pad_column(view->row_primary, 0, 0);
 
     for (size_t i = 0; i < BATTERY_PRIMARY_COUNT; ++i) {
         view->primary_labels[i] = create_label_box(ui, view->row_primary,
@@ -124,11 +123,10 @@ ui_device_view_t *ui_battery_view_create(ui_state_t *ui, lv_obj_t *parent)
                           LV_FLEX_ALIGN_CENTER,
                           LV_FLEX_ALIGN_CENTER);
     lv_obj_clear_flag(view->row_secondary, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_set_style_bg_color(view->row_secondary, lv_color_hex(0x223355), 0);
     lv_obj_set_style_border_width(view->row_secondary, 0, 0);
     lv_obj_set_style_outline_width(view->row_secondary, 0, 0);
-    lv_obj_set_style_pad_all(view->row_secondary, 12, 0);
-    lv_obj_set_style_pad_column(view->row_secondary, 16, 0);
+    lv_obj_set_style_pad_all(view->row_secondary, 5, 0);
+    lv_obj_set_style_pad_column(view->row_secondary, 10, 0);
 
     for (size_t i = 0; i < BATTERY_SECONDARY_COUNT; ++i) {
         view->secondary_labels[i] = create_label_box(ui, view->row_secondary,
