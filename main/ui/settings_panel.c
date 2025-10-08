@@ -401,6 +401,7 @@ static void create_system_settings_page(ui_state_t *ui, lv_obj_t *page_system)
     lv_label_set_text(lbl_save, "Save");
     lv_obj_center(lbl_save);
     lv_obj_add_event_cb(btn_save_key, save_key_btn_event_cb, LV_EVENT_CLICKED, ui);
+    lv_obj_add_style(btn_save_key, &ui->styles.small, 0);
 
     /* Reboot Button */
     lv_obj_t *btn_reboot = lv_btn_create(btn_row);
@@ -409,6 +410,7 @@ static void create_system_settings_page(ui_state_t *ui, lv_obj_t *page_system)
     lv_label_set_text(lbl_reboot, "Reboot");
     lv_obj_center(lbl_reboot);
     lv_obj_add_event_cb(btn_reboot, reboot_btn_event_cb, LV_EVENT_CLICKED, ui);
+    lv_obj_add_style(btn_reboot, &ui->styles.small, 0);
 
     /* --- Victron Debug Checkbox --- */
     ui->victron_debug_checkbox = lv_checkbox_create(sys_container);
