@@ -332,51 +332,50 @@ static bool parse_solar_payload(const uint8_t *buf, size_t len, victron_solar_da
 
 static bool parse_battery_payload(const uint8_t *buf, size_t len, victron_battery_data_t *out)
 {
-    // Battery Monitor: bits 32-160 = 16 bytes
-    // buf[0-1]: TTG (16 bits)
-    // buf[2-3]: battery_voltage (16 bits)
-    // buf[4-5]: alarm_reason (16 bits)
-    // buf[6-7]: aux_value (16 bits)
-    // buf[8-15]: packed bit fields (64 bits)
-    if (len < 16 || out == NULL) {
-        ESP_LOGE(TAG, "Battery payload too short: %zu bytes (need 16+)", len);
+    // Battery Monitor: total = 15 bytes
+    // buf[0-1]:  TTG (16 bits)
+    // buf[2-3]:  Battery voltage (16 bits)
+    // buf[4-5]:  Alarm reason (16 bits)
+    // buf[6-7]:  Aux value (16 bits)
+    // buf[8-14]: Packed bit fields (56 bits total)
+    // Bit layout (relative to bit 64):
+    //   bits 0–1:   aux_input (2 bits)
+    //   bits 2–23:  battery_current (22 bits, signed)
+    //   bits 24–43: consumed_ah (20 bits, signed)
+    //   bits 44–53: soc (10 bits)
+    //   (no padding bits — 2 + 22 + 20 + 10 = 54 bits, rounded to 7 bytes)
+    //
+    // Total = 8 + 7 = 15 bytes
+
+    if (len < 15 || out == NULL) {
+        ESP_LOGE(TAG, "Battery payload too short: %zu bytes (need 15+)", len);
         return false;
     }
 
-    uint16_t ttg_raw = read_u16_le(&buf[0]);
-    uint16_t voltage_raw = read_u16_le(&buf[2]);
-    uint16_t alarm_raw = read_u16_le(&buf[4]);
-    uint16_t aux_raw = read_u16_le(&buf[6]);
+    uint16_t ttg_raw      = read_u16_le(&buf[0]);
+    uint16_t voltage_raw  = read_u16_le(&buf[2]);
+    uint16_t alarm_raw    = read_u16_le(&buf[4]);
+    uint16_t aux_raw      = read_u16_le(&buf[6]);
 
-    VDBG("  TTG (raw): 0x%04X %s", ttg_raw,
-             (ttg_raw == NA_U16_UNSIGNED) ? "(NA)" : "");
-    VDBG("  Battery Voltage (raw): 0x%04X %s", voltage_raw,
-             (voltage_raw == NA_U16_SIGNED) ? "(NA)" : "");
+    VDBG("  TTG (raw): 0x%04X%s", ttg_raw, (ttg_raw == NA_U16_UNSIGNED) ? " (NA)" : "");
+    VDBG("  Battery Voltage (raw): 0x%04X%s", voltage_raw, (voltage_raw == NA_U16_SIGNED) ? " (NA)" : "");
     VDBG("  Alarm Reason: 0x%04X", alarm_raw);
     VDBG("  Aux Value (raw): 0x%04X", aux_raw);
 
-    out->time_to_go_minutes = (ttg_raw == NA_U16_UNSIGNED) ? 0 : ttg_raw;
-    out->battery_voltage_centi = (voltage_raw == NA_U16_SIGNED) ? 0 : voltage_raw;
-    out->alarm_reason = alarm_raw;
-    out->aux_value = aux_raw;
+    out->time_to_go_minutes     = (ttg_raw == NA_U16_UNSIGNED) ? 0 : ttg_raw;
+    out->battery_voltage_centi  = (voltage_raw == NA_U16_SIGNED) ? 0 : voltage_raw;
+    out->alarm_reason           = alarm_raw;
+    out->aux_value              = aux_raw;
 
-    // Extract packed fields from bytes 8-15 (64 bits)
-    // Bit layout (relative to bit 96 in full record):
-    // bits 0-1: aux_input (2 bits)
-    // bits 2-23: battery_current (22 bits, signed)
-    // bits 24-43: consumed_ah (20 bits, signed)
-    // bits 44-53: soc (10 bits)
-    
-    VDBG("  Packed field bytes [8-15]:");
-    if (victron_debug_enabled) ESP_LOG_BUFFER_HEX_LEVEL(TAG, &buf[8], 8, ESP_LOG_INFO);
-    
+    // --- Packed tail (7 bytes = 56 bits)
     uint64_t tail = 0;
-    for (size_t i = 0; i < 8; ++i) {
+    for (size_t i = 0; i < 7; ++i) {
         tail |= ((uint64_t)buf[8 + i]) << (8 * i);
     }
-    VDBG("  Packed 64-bit value: 0x%016llX", tail);
 
-    uint8_t aux_input_raw = (uint8_t)(tail & 0x03u);
+    VDBG("  Packed 56-bit value: 0x%014llX", tail);
+
+    uint8_t  aux_input_raw = (uint8_t)(tail & 0x03u);
     tail >>= 2;
 
     uint32_t current_bits = (uint32_t)(tail & ((1u << 22) - 1u));
@@ -388,44 +387,44 @@ static bool parse_battery_payload(const uint8_t *buf, size_t len, victron_batter
     uint32_t soc_bits = (uint32_t)(tail & ((1u << 10) - 1u));
 
     VDBG("  Aux Input: %u (0=AuxV, 1=MidV, 2=Temp, 3=None)", aux_input_raw);
-    VDBG("  Battery Current (bits): 0x%06X %s", current_bits,
-             (current_bits == NA_U22) ? "(NA)" : "");
-    VDBG("  Consumed Ah (bits): 0x%05X", consumed_bits);
-    VDBG("  SOC (bits): 0x%03X %s", soc_bits,
-             (soc_bits == NA_U10) ? "(NA)" : "");
+    VDBG("  Battery Current bits: 0x%06X%s", current_bits, (current_bits == NA_U22) ? " (NA)" : "");
+    VDBG("  Consumed Ah bits: 0x%05X", consumed_bits);
+    VDBG("  SOC bits: 0x%03X%s", soc_bits, (soc_bits == NA_U10) ? " (NA)" : "");
 
-    out->aux_input = aux_input_raw;
-
-    // Apply sign extension and check NA values
+    // --- Decode and apply signs
+    out->aux_input            = aux_input_raw;
     out->battery_current_milli = (current_bits == NA_U22) ? 0 : sign_extend(current_bits, 22);
-    out->consumed_ah_deci = sign_extend(consumed_bits, 20);
-    out->soc_deci_percent = (soc_bits == NA_U10 || soc_bits > 1000u) ? 0 : (uint16_t)soc_bits;
+    out->consumed_ah_deci      = sign_extend(consumed_bits, 20);
+    out->soc_deci_percent      = (soc_bits == NA_U10 || soc_bits > 1000u) ? 0 : (uint16_t)soc_bits;
 
-    VDBG("  --> Battery: %.2fV, %.3fA", 
-             out->battery_voltage_centi / 100.0, out->battery_current_milli / 1000.0);
+    // --- Log interpreted data
+    VDBG("  --> Battery: %.2f V, %.3f A", 
+         out->battery_voltage_centi / 100.0, out->battery_current_milli / 1000.0);
     VDBG("  --> SOC: %.1f%%, Consumed: %.1f Ah", 
-             out->soc_deci_percent / 10.0, -out->consumed_ah_deci / 10.0);
-    VDBG("  --> TTG: %u min (%.1f hours)", 
-             out->time_to_go_minutes, out->time_to_go_minutes / 60.0);
+         out->soc_deci_percent / 10.0, -out->consumed_ah_deci / 10.0);
+    VDBG("  --> TTG: %u min (%.1f h)", 
+         out->time_to_go_minutes, out->time_to_go_minutes / 60.0);
 
-    // Interpret aux_value based on aux_input
-    switch(out->aux_input) {
+    // --- Interpret aux_value according to aux_input type
+    switch (out->aux_input) {
         case 0:
-            VDBG("  --> Aux Voltage: %.2fV", aux_raw / 100.0);
+            VDBG("  --> Aux Voltage: %.2f V", aux_raw / 100.0);
             break;
         case 1:
-            VDBG("  --> Mid Voltage: %.2fV", aux_raw / 100.0);
+            VDBG("  --> Mid Voltage: %.2f V", aux_raw / 100.0);
             break;
         case 2:
-            VDBG("  --> Temperature: %.2f°C", aux_raw / 100.0);
+            VDBG("  --> Temperature: %.2f °C", aux_raw / 100.0);
             break;
         case 3:
+        default:
             VDBG("  --> Aux: None");
             break;
     }
 
     return true;
 }
+
 
 static inline uint16_t read_u16_le(const uint8_t *buf)
 {
