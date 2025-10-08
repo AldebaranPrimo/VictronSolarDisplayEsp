@@ -3,6 +3,7 @@
 #define VICTRON_BLE_H
 
 #include <stdint.h>
+#include <stdbool.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -52,6 +53,9 @@ void victron_ble_init(void);
 
 // Register a callback to be invoked with each decoded Victron frame
 void victron_ble_register_callback(victron_data_cb_t cb);
+
+// Enable or disable verbose/debug logging in victron BLE module
+void victron_ble_set_debug(bool enabled);
 
 #ifdef __cplusplus
 }

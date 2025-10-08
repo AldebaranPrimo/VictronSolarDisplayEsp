@@ -11,6 +11,10 @@
 /dependencies.lock
 /.python_env/
 
+/release
+
+/managed_components
+
 /gdbinit
 # === ESP-IDF auto-generated args ===
 /app-flash_args
