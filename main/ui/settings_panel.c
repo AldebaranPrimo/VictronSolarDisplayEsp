@@ -444,6 +444,9 @@ void ui_settings_panel_init(ui_state_t *ui,
     lv_obj_center(menu);
     ui->settings_menu = menu;
 
+    lv_obj_t *main_header = lv_menu_get_main_header(menu);
+    lv_obj_add_style(main_header, &ui->styles.small, 0);
+
     lv_obj_t *back_btn = lv_menu_get_main_header_back_btn(menu);
     lv_obj_add_style(back_btn, &ui->styles.small, 0);
 
@@ -453,6 +456,7 @@ void ui_settings_panel_init(ui_state_t *ui,
 
     lv_obj_t *main_page = lv_menu_page_create(menu, NULL);
     lv_obj_t *page_wifi = lv_menu_page_create(menu, "Wi-Fi");
+
     lv_obj_t *page_display = lv_menu_page_create(menu, "Display");
     lv_obj_t *page_relay = lv_menu_page_create(menu, "Relay");
     lv_obj_t *page_system = lv_menu_page_create(menu, "System");
