@@ -433,6 +433,8 @@ void ui_settings_panel_init(ui_state_t *ui,
         return;
     }
 
+    
+
     lv_obj_t *menu = lv_menu_create(ui->tab_settings);
     lv_obj_set_size(menu, lv_pct(100), lv_pct(100));
     lv_obj_center(menu);
@@ -448,7 +450,7 @@ void ui_settings_panel_init(ui_state_t *ui,
     lv_obj_t *page_system = lv_menu_page_create(menu, "System");
 
     lv_obj_t *cont = lv_menu_cont_create(main_page);
-    lv_label_set_text(lv_label_create(cont), "Wi-Fi Settings");
+    lv_label_set_text(lv_label_create(cont), "Wi-Fi");
     lv_menu_set_load_page_event(menu, cont, page_wifi);
 
     cont = lv_menu_cont_create(main_page);
@@ -460,7 +462,7 @@ void ui_settings_panel_init(ui_state_t *ui,
     lv_menu_set_load_page_event(menu, cont, page_relay);
 
     cont = lv_menu_cont_create(main_page);
-    lv_label_set_text(lv_label_create(cont), "System");
+    lv_label_set_text(lv_label_create(cont), "System & Victron Key");
     lv_menu_set_load_page_event(menu, cont, page_system);
 
     lv_menu_set_page(menu, main_page);
@@ -468,6 +470,20 @@ void ui_settings_panel_init(ui_state_t *ui,
     create_display_settings_page(ui, page_display);
     create_relay_settings_page(ui, page_relay);
     create_system_settings_page(ui, page_system);
+
+    lv_obj_t *tab = ui->tab_settings;
+
+    // remove default padding and layout effects
+    lv_obj_set_style_pad_all(tab, 0, 0);
+    lv_obj_set_style_pad_row(tab, 0, 0);
+    lv_obj_set_style_pad_column(tab, 0, 0);
+    lv_obj_set_style_border_width(tab, 0, 0);
+
+    // also ensure the menu expands fully
+    lv_obj_set_size(menu, lv_pct(100), lv_pct(100));
+    lv_obj_align(menu, LV_ALIGN_CENTER, 0, 0);
+    lv_obj_clear_flag(menu, LV_OBJ_FLAG_SCROLLABLE);
+
 
 }
 
