@@ -74,12 +74,22 @@ static void create_wifi_settings_page(ui_state_t *ui, lv_obj_t *page_wifi,
     /* SSID label */
     lv_obj_t *lbl_ssid = lv_label_create(wifi_container);
     lv_obj_add_style(lbl_ssid, &ui->styles.small, 0);
-    lv_label_set_text(lbl_ssid, "AP SSID:");
+    lv_label_set_text(lbl_ssid, "SSID:");
+
+    /* SSID row: input + checkbox */
+    lv_obj_t *ssid_row = lv_obj_create(wifi_container);
+    lv_obj_remove_style_all(ssid_row);
+    lv_obj_set_width(ssid_row, lv_pct(100));
+    lv_obj_set_height(ssid_row, LV_SIZE_CONTENT);
+    lv_obj_set_layout(ssid_row, LV_LAYOUT_FLEX);
+    lv_obj_set_flex_flow(ssid_row, LV_FLEX_FLOW_ROW);
+    lv_obj_set_style_pad_gap(ssid_row, 10, 0);
+    lv_obj_set_flex_align(ssid_row, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
 
     /* SSID input */
-    ui->wifi.ssid = lv_textarea_create(wifi_container);
+    ui->wifi.ssid = lv_textarea_create(ssid_row);
     lv_textarea_set_one_line(ui->wifi.ssid, true);
-    lv_obj_set_width(ui->wifi.ssid, lv_pct(50));
+    lv_obj_set_width(ui->wifi.ssid, lv_pct(40));
     lv_textarea_set_text(ui->wifi.ssid, default_ssid);
     lv_obj_add_event_cb(ui->wifi.ssid, ta_event_cb, LV_EVENT_FOCUSED, ui);
     lv_obj_add_event_cb(ui->wifi.ssid, ta_event_cb, LV_EVENT_DEFOCUSED, ui);
@@ -87,10 +97,19 @@ static void create_wifi_settings_page(ui_state_t *ui, lv_obj_t *page_wifi,
     lv_obj_add_event_cb(ui->wifi.ssid, ta_event_cb, LV_EVENT_READY, ui);
     lv_obj_add_event_cb(ui->wifi.ssid, wifi_event_cb, LV_EVENT_VALUE_CHANGED, ui);
 
+    /* AP enable checkbox */
+    ui->wifi.ap_enable = lv_checkbox_create(ssid_row);
+    lv_checkbox_set_text(ui->wifi.ap_enable, "Enable AP");
+    lv_obj_add_style(ui->wifi.ap_enable, &ui->styles.medium, 0);
+    if (ap_enabled) {
+        lv_obj_add_state(ui->wifi.ap_enable, LV_STATE_CHECKED);
+    }
+    lv_obj_add_event_cb(ui->wifi.ap_enable, ap_checkbox_event_cb, LV_EVENT_VALUE_CHANGED, ui);
+
     /* Password label */
     lv_obj_t *lbl_pass = lv_label_create(wifi_container);
     lv_obj_add_style(lbl_pass, &ui->styles.small, 0);
-    lv_label_set_text(lbl_pass, "AP Password:");
+    lv_label_set_text(lbl_pass, "Password:");
 
     const char *ap_password = (default_pass && default_pass[0] != '\0') ? default_pass : DEFAULT_AP_PASSWORD;
 
@@ -108,7 +127,7 @@ static void create_wifi_settings_page(ui_state_t *ui, lv_obj_t *page_wifi,
     ui->wifi.password = lv_textarea_create(pass_row);
     lv_textarea_set_password_mode(ui->wifi.password, true);
     lv_textarea_set_one_line(ui->wifi.password, true);
-    lv_obj_set_width(ui->wifi.password, lv_pct(50));
+    lv_obj_set_width(ui->wifi.password, lv_pct(40));
     lv_textarea_set_text(ui->wifi.password, ap_password);
     lv_obj_add_event_cb(ui->wifi.password, ta_event_cb, LV_EVENT_FOCUSED, ui);
     lv_obj_add_event_cb(ui->wifi.password, ta_event_cb, LV_EVENT_DEFOCUSED, ui);
@@ -124,16 +143,9 @@ static void create_wifi_settings_page(ui_state_t *ui, lv_obj_t *page_wifi,
     lv_obj_t *lbl_toggle = lv_label_create(ui->wifi.password_toggle);
     lv_label_set_text(lbl_toggle, "Show");
     lv_obj_center(lbl_toggle);
-
-    /* AP enable checkbox */
-    ui->wifi.ap_enable = lv_checkbox_create(wifi_container);
-    lv_checkbox_set_text(ui->wifi.ap_enable, "Enable AP");
-    lv_obj_add_style(ui->wifi.ap_enable, &ui->styles.medium, 0);
-    if (ap_enabled) {
-        lv_obj_add_state(ui->wifi.ap_enable, LV_STATE_CHECKED);
-    }
-    lv_obj_add_event_cb(ui->wifi.ap_enable, ap_checkbox_event_cb, LV_EVENT_VALUE_CHANGED, ui);
 }
+
+
 
 static void create_display_settings_page(ui_state_t *ui, lv_obj_t *page_display)
 {
@@ -153,7 +165,7 @@ static void create_display_settings_page(ui_state_t *ui, lv_obj_t *page_display)
     lv_label_set_text(lbl_brightness, "Brightness:");
 
     lv_obj_t *slider_brightness = lv_slider_create(disp_container);
-    lv_obj_set_width(slider_brightness, lv_pct(90));
+    lv_obj_set_width(slider_brightness, lv_pct(50));
     lv_slider_set_range(slider_brightness, 1, 100);
     lv_slider_set_value(slider_brightness, ui->brightness, LV_ANIM_OFF);
     bsp_display_brightness_set(ui->brightness);
@@ -175,7 +187,7 @@ static void create_display_settings_page(ui_state_t *ui, lv_obj_t *page_display)
     lv_label_set_text(lbl_ss_brightness, "Screensaver Brightness:");
 
     ui->screensaver.slider_brightness = lv_slider_create(disp_container);
-    lv_obj_set_width(ui->screensaver.slider_brightness, lv_pct(90));
+    lv_obj_set_width(ui->screensaver.slider_brightness, lv_pct(50));
     lv_slider_set_range(ui->screensaver.slider_brightness, 1, 100);
     lv_slider_set_value(ui->screensaver.slider_brightness, ui->screensaver.brightness, LV_ANIM_OFF);
     lv_obj_add_event_cb(ui->screensaver.slider_brightness, slider_ss_brightness_event_cb, LV_EVENT_VALUE_CHANGED, ui);
@@ -232,7 +244,6 @@ static void create_display_settings_page(ui_state_t *ui, lv_obj_t *page_display)
     }
 }
 
-
 static void create_relay_settings_page(ui_state_t *ui, lv_obj_t *page_relay)
 {
     /* Root container for relay settings */
@@ -244,11 +255,6 @@ static void create_relay_settings_page(ui_state_t *ui, lv_obj_t *page_relay)
     lv_obj_set_style_pad_all(relay_container, 10, 0);
     lv_obj_set_style_pad_gap(relay_container, 14, 0);
     lv_obj_set_scroll_dir(relay_container, LV_DIR_VER);
-
-    /* --- Relay tab enable section --- */
-    lv_obj_t *lbl_relay_tab = lv_label_create(relay_container);
-    lv_obj_add_style(lbl_relay_tab, &ui->styles.small, 0);
-    lv_label_set_text(lbl_relay_tab, "Relay Tab:");
 
     ui->relay_checkbox = lv_checkbox_create(relay_container);
     lv_checkbox_set_text(ui->relay_checkbox, "Enable Relay Tab");
@@ -311,7 +317,6 @@ static void create_relay_settings_page(ui_state_t *ui, lv_obj_t *page_relay)
     relay_config_refresh_dropdowns(ui);
     relay_config_update_controls(ui);
 }
-
 
 static void create_system_settings_page(ui_state_t *ui, lv_obj_t *page_system)
 {
@@ -422,7 +427,6 @@ static void create_system_settings_page(ui_state_t *ui, lv_obj_t *page_system)
     /* Apply setting immediately to BLE module */
     victron_ble_set_debug(ui->victron_debug_enabled);
 }
-
 
 void ui_settings_panel_init(ui_state_t *ui,
                             const char *default_ssid,
