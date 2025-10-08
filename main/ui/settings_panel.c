@@ -66,12 +66,12 @@ void ui_settings_panel_init(ui_state_t *ui,
     }
 
     lv_obj_t *lbl_version = lv_label_create(ui->tab_settings);
-    lv_obj_add_style(lbl_version, &ui->styles.title, 0);
+    lv_obj_add_style(lbl_version, &ui->styles.small, 0);
     lv_label_set_text_fmt(lbl_version, "Version: %s", APP_VERSION);
     lv_obj_align(lbl_version, LV_ALIGN_TOP_RIGHT, -8, 15);
 
     lv_obj_t *lbl_ssid = lv_label_create(ui->tab_settings);
-    lv_obj_add_style(lbl_ssid, &ui->styles.title, 0);
+    lv_obj_add_style(lbl_ssid, &ui->styles.small, 0);
     lv_label_set_text(lbl_ssid, "AP SSID:");
     lv_obj_align(lbl_ssid, LV_ALIGN_TOP_LEFT, 8, 15);
 
@@ -87,7 +87,7 @@ void ui_settings_panel_init(ui_state_t *ui,
     lv_obj_add_event_cb(ui->wifi.ssid, wifi_event_cb, LV_EVENT_VALUE_CHANGED, ui);
 
     lv_obj_t *lbl_pass = lv_label_create(ui->tab_settings);
-    lv_obj_add_style(lbl_pass, &ui->styles.title, 0);
+    lv_obj_add_style(lbl_pass, &ui->styles.small, 0);
     lv_label_set_text(lbl_pass, "AP Password:");
     lv_obj_align(lbl_pass, LV_ALIGN_TOP_LEFT, 8, 90);
 
@@ -124,17 +124,17 @@ void ui_settings_panel_init(ui_state_t *ui,
     lv_obj_add_event_cb(ui->wifi.ap_enable, ap_checkbox_event_cb, LV_EVENT_VALUE_CHANGED, ui);
 
     ui->lbl_error = lv_label_create(ui->tab_settings);
-    lv_obj_add_style(ui->lbl_error, &ui->styles.title, 0);
+    lv_obj_add_style(ui->lbl_error, &ui->styles.small, 0);
     lv_label_set_text(ui->lbl_error, "Err: 0");
-    lv_obj_align(ui->lbl_error, LV_ALIGN_TOP_LEFT, 320, 820);
+    lv_obj_align(ui->lbl_error, LV_ALIGN_TOP_LEFT, 8, 850);
 
     ui->lbl_device_type = lv_label_create(ui->tab_settings);
-    lv_obj_add_style(ui->lbl_device_type, &ui->styles.title, 0);
+    lv_obj_add_style(ui->lbl_device_type, &ui->styles.small, 0);
     lv_label_set_text(ui->lbl_device_type, "Device: --");
     lv_obj_align(ui->lbl_device_type, LV_ALIGN_TOP_LEFT, 8, 820);
 
     lv_obj_t *lmac = lv_label_create(ui->tab_settings);
-    lv_obj_add_style(lmac, &ui->styles.title, 0);
+    lv_obj_add_style(lmac, &ui->styles.small, 0);
     lv_label_set_text(lmac, "MAC Address:");
     lv_obj_align(lmac, LV_ALIGN_TOP_LEFT, 8, 250);
 
@@ -149,7 +149,7 @@ void ui_settings_panel_init(ui_state_t *ui,
     lv_obj_add_event_cb(ui->ta_mac, ta_event_cb, LV_EVENT_READY, ui);
 
     lv_obj_t *lkey = lv_label_create(ui->tab_settings);
-    lv_obj_add_style(lkey, &ui->styles.title, 0);
+    lv_obj_add_style(lkey, &ui->styles.small, 0);
     lv_label_set_text(lkey, "AES Key:");
     lv_obj_align(lkey, LV_ALIGN_TOP_LEFT, 8, 320);
 
@@ -193,7 +193,7 @@ void ui_settings_panel_init(ui_state_t *ui,
     ui->victron_debug_checkbox = lv_checkbox_create(ui->tab_settings);
     lv_checkbox_set_text(ui->victron_debug_checkbox, "Enable Victron BLE Debug");
     lv_obj_add_style(ui->victron_debug_checkbox, &ui->styles.medium, 0);
-    lv_obj_align(ui->victron_debug_checkbox, LV_ALIGN_TOP_LEFT, 8, 870);
+    lv_obj_align(ui->victron_debug_checkbox, LV_ALIGN_TOP_LEFT, 8, 900);
     lv_obj_add_event_cb(ui->victron_debug_checkbox, victron_debug_event_cb, LV_EVENT_VALUE_CHANGED, ui);
 
     bool dbg = false;
@@ -207,7 +207,7 @@ void ui_settings_panel_init(ui_state_t *ui,
     victron_ble_set_debug(ui->victron_debug_enabled);
 
     lv_obj_t *lbl_brightness = lv_label_create(ui->tab_settings);
-    lv_obj_add_style(lbl_brightness, &ui->styles.title, 0);
+    lv_obj_add_style(lbl_brightness, &ui->styles.small, 0);
     lv_label_set_text(lbl_brightness, "Brightness:");
     lv_obj_align(lbl_brightness, LV_ALIGN_TOP_LEFT, 8, 450);
 
@@ -236,7 +236,7 @@ void ui_settings_panel_init(ui_state_t *ui,
 
     
     lv_obj_t *lbl_ss_brightness = lv_label_create(ui->tab_settings);
-    lv_obj_add_style(lbl_ss_brightness, &ui->styles.title, 0);
+    lv_obj_add_style(lbl_ss_brightness, &ui->styles.small, 0);
     lv_label_set_text(lbl_ss_brightness, "Screensaver Brightness:");
     lv_obj_align(lbl_ss_brightness, LV_ALIGN_TOP_LEFT, 8, 650);
 
@@ -249,7 +249,7 @@ void ui_settings_panel_init(ui_state_t *ui,
     lv_obj_add_style(ui->screensaver.slider_brightness, &ui->styles.medium, 0);
 
     lv_obj_t *lbl_ss_time = lv_label_create(ui->tab_settings);
-    lv_obj_add_style(lbl_ss_time, &ui->styles.title, 0);
+    lv_obj_add_style(lbl_ss_time, &ui->styles.small, 0);
     lv_label_set_text(lbl_ss_time, "Screensaver Timeout (s):");
     lv_obj_align(lbl_ss_time, LV_ALIGN_TOP_LEFT, 8, 730);
 
@@ -278,7 +278,7 @@ void ui_settings_panel_init(ui_state_t *ui,
     // Debug checkbox already created earlier and initialized; don't recreate it here.
 
     lv_obj_t *lbl_relay_tab = lv_label_create(ui->tab_settings);
-    lv_obj_add_style(lbl_relay_tab, &ui->styles.title, 0);
+    lv_obj_add_style(lbl_relay_tab, &ui->styles.small, 0);
     lv_label_set_text(lbl_relay_tab, "Relay Tab:");
     lv_obj_align(lbl_relay_tab, LV_ALIGN_TOP_LEFT, 8, 950);
 

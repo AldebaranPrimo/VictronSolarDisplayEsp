@@ -154,7 +154,7 @@ void ui_format_aux_value(uint8_t aux_input, uint16_t aux_value,
 
     switch (aux_input & 0x03u) {
     case 0:
-        idx += append_text(out + idx, out_len - idx, "Aux ");
+        idx += append_text(out + idx, out_len - idx, "A: ");
         if (aux_value == AUX_NA) {
             idx += append_text(out + idx, out_len - idx, "N/A");
         } else {
@@ -165,7 +165,7 @@ void ui_format_aux_value(uint8_t aux_input, uint16_t aux_value,
         }
         break;
     case 1:
-        idx += append_text(out + idx, out_len - idx, "Mid ");
+        idx += append_text(out + idx, out_len - idx, "M: ");
         if (aux_value == AUX_NA) {
             idx += append_text(out + idx, out_len - idx, "N/A");
         } else {
@@ -176,7 +176,7 @@ void ui_format_aux_value(uint8_t aux_input, uint16_t aux_value,
         }
         break;
     case 2:
-        idx += append_text(out + idx, out_len - idx, "Temp ");
+        idx += append_text(out + idx, out_len - idx, "T:");
         if (aux_value == AUX_NA) {
             idx += append_text(out + idx, out_len - idx, "N/A");
         } else {
@@ -185,11 +185,11 @@ void ui_format_aux_value(uint8_t aux_input, uint16_t aux_value,
             char number[16] = {0};
             build_signed_fixed(number, sizeof(number), temp_tenths, 10, 1);
             idx += append_text(out + idx, out_len - idx, number);
-            idx += append_text(out + idx, out_len - idx, " C");
+            idx += append_text(out + idx, out_len - idx, "C");
         }
         break;
     default:
-        idx = append_text(out, out_len, "None");
+        idx = append_text(out, out_len, "-");
         break;
     }
 

@@ -147,17 +147,17 @@ ui_device_view_t *ui_solar_view_create(ui_state_t *ui, lv_obj_t *parent)
     lv_obj_align(view->icon_bolt, LV_ALIGN_BOTTOM_RIGHT, -28, -55);
 
     view->bottom_labels[SOLAR_BOTTOM_SOLAR_POWER] = lv_label_create(view->base.root);
-    lv_obj_add_style(view->bottom_labels[SOLAR_BOTTOM_SOLAR_POWER], &ui->styles.title, 0);
+    lv_obj_add_style(view->bottom_labels[SOLAR_BOTTOM_SOLAR_POWER], &ui->styles.small, 0);
     lv_label_set_text(view->bottom_labels[SOLAR_BOTTOM_SOLAR_POWER], "");
     lv_obj_align(view->bottom_labels[SOLAR_BOTTOM_SOLAR_POWER], LV_ALIGN_BOTTOM_LEFT, 32, -8);
 
     view->bottom_labels[SOLAR_BOTTOM_YIELD] = lv_label_create(view->base.root);
-    lv_obj_add_style(view->bottom_labels[SOLAR_BOTTOM_YIELD], &ui->styles.title, 0);
+    lv_obj_add_style(view->bottom_labels[SOLAR_BOTTOM_YIELD], &ui->styles.small, 0);
     lv_label_set_text(view->bottom_labels[SOLAR_BOTTOM_YIELD], "");
     lv_obj_align(view->bottom_labels[SOLAR_BOTTOM_YIELD], LV_ALIGN_BOTTOM_MID, 0, -8);
 
     view->bottom_labels[SOLAR_BOTTOM_LOAD_POWER] = lv_label_create(view->base.root);
-    lv_obj_add_style(view->bottom_labels[SOLAR_BOTTOM_LOAD_POWER], &ui->styles.title, 0);
+    lv_obj_add_style(view->bottom_labels[SOLAR_BOTTOM_LOAD_POWER], &ui->styles.small, 0);
     lv_label_set_text(view->bottom_labels[SOLAR_BOTTOM_LOAD_POWER], "");
     lv_obj_align(view->bottom_labels[SOLAR_BOTTOM_LOAD_POWER], LV_ALIGN_BOTTOM_RIGHT, -31, -8);
 

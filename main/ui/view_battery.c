@@ -20,12 +20,19 @@ typedef enum {
 } battery_secondary_label_t;
 
 typedef struct {
+    lv_obj_t *header;
+    lv_obj_t *value;
+} ui_label_pair_t;
+
+typedef struct {
     ui_device_view_t base;
     lv_obj_t *row_primary;
     lv_obj_t *row_secondary;
-    lv_obj_t *primary_labels[BATTERY_PRIMARY_COUNT];
-    lv_obj_t *secondary_labels[BATTERY_SECONDARY_COUNT];
+    ui_label_pair_t primary[BATTERY_PRIMARY_COUNT];
+    ui_label_pair_t secondary[BATTERY_SECONDARY_COUNT];
 } ui_battery_view_t;
+
+
 
 static void battery_view_update(ui_device_view_t *view, const victron_data_t *data);
 static void battery_view_show(ui_device_view_t *view);
@@ -40,8 +47,8 @@ static void format_secondary_consumed(lv_obj_t *label, const victron_data_t *dat
 static void format_secondary_aux(lv_obj_t *label, const victron_data_t *data);
 
 static const ui_label_descriptor_t battery_primary_descriptors[BATTERY_PRIMARY_COUNT] = {
-    { "battery_voltage", "Batt V", format_primary_voltage },
-    { "battery_current", "Current", format_primary_current },
+    { "battery_voltage", "BAT V", format_primary_voltage },
+    { "battery_current", "BAT C", format_primary_current },
     { "battery_soc", "SOC", format_primary_soc },
 };
 
@@ -51,28 +58,32 @@ static const ui_label_descriptor_t battery_secondary_descriptors[BATTERY_SECONDA
     { "aux", "Aux", format_secondary_aux },
 };
 
-static lv_obj_t *create_label_box(ui_state_t *ui, lv_obj_t *parent,
-                                  const ui_label_descriptor_t *desc)
+static ui_label_pair_t create_label_box(ui_state_t *ui, lv_obj_t *parent,
+                                        const ui_label_descriptor_t *desc)
 {
+    ui_label_pair_t pair = {0};
+
     lv_obj_t *box = lv_obj_create(parent);
-    lv_obj_set_size(box, lv_pct(30), 110);
-    lv_obj_set_style_pad_all(box, 12, 0);
+    lv_obj_set_size(box, lv_pct(30), 100);
+    lv_obj_set_style_pad_all(box, 0, 0);
     lv_obj_set_style_bg_opa(box, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(box, 0, 0);
     lv_obj_set_style_outline_width(box, 0, 0);
+    lv_obj_clear_flag(box, LV_OBJ_FLAG_SCROLLABLE);
 
-    lv_obj_t *header = lv_label_create(box);
-    lv_label_set_text(header, desc->title ? desc->title : "");
-    lv_obj_add_style(header, &ui->styles.title, 0);
-    lv_obj_align(header, LV_ALIGN_TOP_MID, 0, 0);
+    pair.header = lv_label_create(box);
+    lv_label_set_text(pair.header, desc->title ? desc->title : "");
+    lv_obj_add_style(pair.header, &ui->styles.medium, 0);
+    lv_obj_align(pair.header, LV_ALIGN_TOP_MID, 0, 15);
 
-    lv_obj_t *value = lv_label_create(box);
-    lv_label_set_text(value, "--");
-    lv_obj_add_style(value, &ui->styles.medium, 0);
-    lv_obj_align(value, LV_ALIGN_CENTER, 0, 10);
+    pair.value = lv_label_create(box);
+    lv_label_set_text(pair.value, "--");
+    lv_obj_add_style(pair.value, &ui->styles.small, 0);
+    lv_obj_align(pair.value, LV_ALIGN_BOTTOM_MID, 0, -15);
 
-    return value;
+    return pair;
 }
+
 
 ui_device_view_t *ui_battery_view_create(ui_state_t *ui, lv_obj_t *parent)
 {
@@ -94,11 +105,17 @@ ui_device_view_t *ui_battery_view_create(ui_state_t *ui, lv_obj_t *parent)
     lv_obj_set_style_pad_all(view->base.root, 0, 0);
     lv_obj_clear_flag(view->base.root, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_set_flex_flow(view->base.root, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_style_pad_row(view->base.root, 12, 0);
+
+    lv_obj_set_flex_align(view->base.root,
+                        LV_FLEX_ALIGN_CENTER,
+                        LV_FLEX_ALIGN_CENTER,
+                        LV_FLEX_ALIGN_CENTER);
+
+    lv_obj_set_style_pad_row(view->base.root, 20, 0);
     lv_obj_add_flag(view->base.root, LV_OBJ_FLAG_HIDDEN);
 
     view->row_primary = lv_obj_create(view->base.root);
-    lv_obj_set_size(view->row_primary, lv_pct(100), 110);
+    lv_obj_set_size(view->row_primary, lv_pct(100), 100);
     lv_obj_set_flex_flow(view->row_primary, LV_STYLE_PAD_ROW);
     lv_obj_set_flex_align(view->row_primary,
                           LV_FLEX_ALIGN_SPACE_EVENLY,
@@ -111,12 +128,13 @@ ui_device_view_t *ui_battery_view_create(ui_state_t *ui, lv_obj_t *parent)
     lv_obj_set_style_pad_column(view->row_primary, 0, 0);
 
     for (size_t i = 0; i < BATTERY_PRIMARY_COUNT; ++i) {
-        view->primary_labels[i] = create_label_box(ui, view->row_primary,
-                                                   &battery_primary_descriptors[i]);
+        view->primary[i] = create_label_box(ui, view->row_primary,
+                                    &battery_primary_descriptors[i]);
+
     }
 
     view->row_secondary = lv_obj_create(view->base.root);
-    lv_obj_set_size(view->row_secondary, lv_pct(100), 110);
+    lv_obj_set_size(view->row_secondary, lv_pct(100), 100);
     lv_obj_set_flex_flow(view->row_secondary, LV_STYLE_PAD_ROW);
     lv_obj_set_flex_align(view->row_secondary,
                           LV_FLEX_ALIGN_SPACE_EVENLY,
@@ -125,12 +143,13 @@ ui_device_view_t *ui_battery_view_create(ui_state_t *ui, lv_obj_t *parent)
     lv_obj_clear_flag(view->row_secondary, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_set_style_border_width(view->row_secondary, 0, 0);
     lv_obj_set_style_outline_width(view->row_secondary, 0, 0);
-    lv_obj_set_style_pad_all(view->row_secondary, 5, 0);
-    lv_obj_set_style_pad_column(view->row_secondary, 10, 0);
+    lv_obj_set_style_pad_all(view->row_secondary, 0, 0);
+    lv_obj_set_style_pad_column(view->row_secondary, 0, 0);
 
     for (size_t i = 0; i < BATTERY_SECONDARY_COUNT; ++i) {
-        view->secondary_labels[i] = create_label_box(ui, view->row_secondary,
-                                                     &battery_secondary_descriptors[i]);
+        view->secondary[i] = create_label_box(ui, view->row_secondary,
+                                      &battery_secondary_descriptors[i]);
+
     }
 
     view->base.update = battery_view_update;
@@ -155,16 +174,17 @@ static void battery_view_update(ui_device_view_t *view, const victron_data_t *da
     }
 
     for (size_t i = 0; i < BATTERY_PRIMARY_COUNT; ++i) {
-        if (battery->primary_labels[i]) {
-            battery_primary_descriptors[i].formatter(battery->primary_labels[i], data);
+        if (battery->primary[i].value) {
+            battery_primary_descriptors[i].formatter(battery->primary[i].value, data);
         }
     }
 
     for (size_t i = 0; i < BATTERY_SECONDARY_COUNT; ++i) {
-        if (battery->secondary_labels[i]) {
-            battery_secondary_descriptors[i].formatter(battery->secondary_labels[i], data);
+        if (battery->secondary[i].value) {
+            battery_secondary_descriptors[i].formatter(battery->secondary[i].value, data);
         }
     }
+
 
     const victron_battery_data_t *b = &data->payload.battery;
     if (view->ui && view->ui->lbl_error) {
@@ -269,8 +289,36 @@ static void format_secondary_aux(lv_obj_t *label, const victron_data_t *data)
         data->type != VICTRON_DEVICE_TYPE_BATTERY_MONITOR) {
         return;
     }
+
+    lv_obj_t *box = lv_obj_get_parent(label);
+    lv_obj_t *header = NULL;
+
+    uint32_t child_count = lv_obj_get_child_cnt(box);
+    for (uint32_t i = 0; i < child_count; i++) {
+        lv_obj_t *child = lv_obj_get_child(box, i);
+        if (child != label) {
+            header = child;
+            break;
+        }
+    }
+
     const victron_battery_data_t *b = &data->payload.battery;
     char aux_buf[32];
-    ui_format_aux_value(b->aux_input, b->aux_value, aux_buf, sizeof(aux_buf));
-    lv_label_set_text(label, aux_buf);
+
+    if ((b->aux_input & 0x03u) == 0x03u) {
+        if (header) lv_label_set_text(header, "Power");
+
+        // Compute instantaneous power (Watts, with 1 decimal)
+        int32_t power_mw = (int32_t)b->battery_voltage_centi * (int32_t)b->battery_current_milli;
+        int32_t power_tenths = ui_round_div_signed(power_mw, 10000); // fixed: divide by 10 000
+        ui_label_set_signed_fixed(label, power_tenths, 10, 1, " W");
+    } else {
+        if (header) lv_label_set_text(header, "Aux");
+        ui_format_aux_value(b->aux_input, b->aux_value, aux_buf, sizeof(aux_buf));
+        lv_label_set_text(label, aux_buf);
+    }
 }
+
+
+
+

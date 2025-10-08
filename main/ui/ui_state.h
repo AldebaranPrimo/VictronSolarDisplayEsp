@@ -13,7 +13,7 @@ struct ui_device_view;
 #define UI_RELAY_GPIO_UNASSIGNED UINT8_MAX
 
 typedef struct {
-    lv_style_t title;
+    lv_style_t small;
     lv_style_t value;
     lv_style_t big;
     lv_style_t medium;

@@ -176,14 +176,14 @@ void ui_init(void) {
     lv_obj_add_flag(ui->keyboard, LV_OBJ_FLAG_HIDDEN);
 
     // Styles
-    lv_style_init(&ui->styles.title);
+    lv_style_init(&ui->styles.small);
     /* Use montserrat 22 for titles as requested */
 #if LV_FONT_MONTSERRAT_22
-    lv_style_set_text_font(&ui->styles.title, &lv_font_montserrat_22);
+    lv_style_set_text_font(&ui->styles.small, &lv_font_montserrat_22);
 #else
     lv_style_set_text_font(&ui->styles.title, &lv_font_montserrat_16);
 #endif
-    lv_style_set_text_color(&ui->styles.title, lv_color_white());
+    lv_style_set_text_color(&ui->styles.small, lv_color_white());
 
     lv_style_init(&ui->styles.medium);
     lv_style_set_text_font(&ui->styles.medium, &lv_font_montserrat_24);
