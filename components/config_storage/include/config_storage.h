@@ -5,6 +5,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <stdbool.h>
+#include "nvs.h"
 
 #define DEFAULT_AP_PASSWORD "12345678"
 

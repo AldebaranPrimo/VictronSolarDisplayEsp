@@ -1,6 +1,5 @@
 // config_storage.c
 #include "config_storage.h"
-#include "nvs.h"
 #include <string.h>
 
 #define AES_NAMESPACE  "victron"
