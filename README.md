@@ -100,7 +100,7 @@ VictronSolarDisplayEsp/
    └─ ui/                   # Modular UI components (views, helpers)
       ├─ view_solar.c       # Solar charger layout & update logic
       ├─ view_battery.c     # Battery monitor layout & update logic
-      ├─ view_registry.c    # Factory registry for victron_device_type_t
+      ├─ view_registry.c    # Factory registry for victron_record_type_t
       ├─ settings_panel.c   # Settings-tab widgets and event handlers
       ├─ ui_state.h         # Shared UI state struct
       └─ ui_format.c        # Common label formatting helpers
@@ -116,7 +116,7 @@ VictronSolarDisplayEsp/
 The UI is now modular: each device view lives in `main/ui/` and is registered by type. To plug in a new Victron payload, follow these steps:
 
 1. **Update BLE Parsing**
-   - Extend `victron_ble.c` to decode the new record type into `victron_data_t`. Add any required structs to `victron_ble.h` and assign a unique `victron_device_type_t` enum value.
+   - Extend `victron_ble.c` to decode the new record type into `victron_data_t`. Add any required structs to `victron_ble.h` and assign a unique `victron_record_type_t` enum value.
 
 2. **Implement the View Module**
    - Create `main/ui/view_<device>.c` with a `ui_device_view_t` implementation (see `view_solar.c` or `view_battery.c` for patterns).
@@ -125,7 +125,7 @@ The UI is now modular: each device view lives in `main/ui/` and is registered by
      - Provide `show()`/`hide()` for visibility toggling; `destroy()` only if you allocate additional resources.
 
 3. **Register the View**
-   - Add an entry to `main/ui/view_registry.c` mapping your new `victron_device_type_t` to the module’s factory function and display name.
+   - Add an entry to `main/ui/view_registry.c` mapping your new `victron_record_type_t` to the module’s factory function and display name.
    - If the device should appear with a specific label in the Settings tab, also update `ui_settings_panel_init()` as needed.
 
 4. **Expose Shared State**

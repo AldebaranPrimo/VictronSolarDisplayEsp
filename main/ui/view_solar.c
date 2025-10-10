@@ -79,13 +79,13 @@ typedef struct {
     unsigned long load_w;
 } solar_metrics_t;
 
-static void compute_metrics(const victron_solar_data_t *s, solar_metrics_t *out)
+static void compute_metrics(const victron_record_solar_charger_t *s, solar_metrics_t *out)
 {
     if (out == NULL || s == NULL) {
         return;
     }
-    out->input_power_w = s->input_power_w;
-    out->yield_wh = (unsigned long)s->today_yield_centikwh * 10UL;
+    out->input_power_w = s->pv_power_w;
+    out->yield_wh = (unsigned long)s->yield_today_centikwh * 10UL;
 
     int load_raw = s->load_current_deci;
     int batt_raw = s->battery_voltage_centi;
@@ -177,7 +177,7 @@ static ui_solar_view_t *solar_view_from_base(ui_device_view_t *base)
 static void solar_view_update(ui_device_view_t *view, const victron_data_t *data)
 {
     ui_solar_view_t *solar = solar_view_from_base(view);
-    if (solar == NULL || data == NULL || data->type != VICTRON_DEVICE_TYPE_SOLAR_CHARGER) {
+    if (solar == NULL || data == NULL || data->type != VICTRON_BLE_RECORD_SOLAR_CHARGER) {
         return;
     }
 
@@ -187,7 +187,7 @@ static void solar_view_update(ui_device_view_t *view, const victron_data_t *data
         }
     }
 
-    const victron_solar_data_t *s = &data->payload.solar;
+    const victron_record_solar_charger_t *s = &data->record.solar;
     solar_metrics_t metrics = {0};
     compute_metrics(s, &metrics);
 
@@ -209,7 +209,7 @@ static void solar_view_update(ui_device_view_t *view, const victron_data_t *data
     }
 
     if (view->ui && view->ui->lbl_error) {
-        lv_label_set_text(view->ui->lbl_error, solar_error_string(s->error_code));
+        lv_label_set_text(view->ui->lbl_error, solar_error_string(s->charger_error));
     }
 }
 
@@ -241,10 +241,10 @@ static void solar_view_destroy(ui_device_view_t *view)
 
 static void format_battery_voltage(lv_obj_t *label, const victron_data_t *data)
 {
-    if (label == NULL || data == NULL || data->type != VICTRON_DEVICE_TYPE_SOLAR_CHARGER) {
+    if (label == NULL || data == NULL || data->type != VICTRON_BLE_RECORD_SOLAR_CHARGER) {
         return;
     }
-    const victron_solar_data_t *s = &data->payload.solar;
+    const victron_record_solar_charger_t *s = &data->record.solar;
     int raw = s->battery_voltage_centi;
     int integral = raw / 100;
     int fractional = abs(raw % 100);
@@ -253,10 +253,10 @@ static void format_battery_voltage(lv_obj_t *label, const victron_data_t *data)
 
 static void format_battery_current(lv_obj_t *label, const victron_data_t *data)
 {
-    if (label == NULL || data == NULL || data->type != VICTRON_DEVICE_TYPE_SOLAR_CHARGER) {
+    if (label == NULL || data == NULL || data->type != VICTRON_BLE_RECORD_SOLAR_CHARGER) {
         return;
     }
-    const victron_solar_data_t *s = &data->payload.solar;
+    const victron_record_solar_charger_t *s = &data->record.solar;
     int raw = s->battery_current_deci;
     int integral = raw / 10;
     int fractional = abs(raw % 10);
@@ -265,10 +265,10 @@ static void format_battery_current(lv_obj_t *label, const victron_data_t *data)
 
 static void format_load_current(lv_obj_t *label, const victron_data_t *data)
 {
-    if (label == NULL || data == NULL || data->type != VICTRON_DEVICE_TYPE_SOLAR_CHARGER) {
+    if (label == NULL || data == NULL || data->type != VICTRON_BLE_RECORD_SOLAR_CHARGER) {
         return;
     }
-    const victron_solar_data_t *s = &data->payload.solar;
+    const victron_record_solar_charger_t *s = &data->record.solar;
     int raw = s->load_current_deci;
     int integral = raw / 10;
     int fractional = abs(raw % 10);

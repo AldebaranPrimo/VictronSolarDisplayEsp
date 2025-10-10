@@ -7,8 +7,8 @@
 static const char *TAG = "UI_VIEW_REGISTRY";
 
 static const ui_view_descriptor_t VIEW_DESCRIPTORS[] = {
-    { VICTRON_DEVICE_TYPE_SOLAR_CHARGER, "0x01 Solar Charger", ui_solar_view_create },
-    { VICTRON_DEVICE_TYPE_BATTERY_MONITOR, "0x02 Battery Monitor", ui_battery_view_create },
+    { VICTRON_BLE_RECORD_SOLAR_CHARGER, "0x01 Solar Charger", ui_solar_view_create },
+    { VICTRON_BLE_RECORD_BATTERY_MONITOR, "0x02 Battery Monitor", ui_battery_view_create },
 };
 
 static size_t descriptor_count(void)
@@ -16,12 +16,12 @@ static size_t descriptor_count(void)
     return sizeof(VIEW_DESCRIPTORS) / sizeof(VIEW_DESCRIPTORS[0]);
 }
 
-static size_t type_to_index(victron_device_type_t type)
+static size_t type_to_index(victron_record_type_t type)
 {
     return (size_t)type;
 }
 
-const ui_view_descriptor_t *ui_view_registry_find(victron_device_type_t type)
+const ui_view_descriptor_t *ui_view_registry_find(victron_record_type_t type)
 {
     size_t count = descriptor_count();
     for (size_t i = 0; i < count; ++i) {
@@ -33,7 +33,7 @@ const ui_view_descriptor_t *ui_view_registry_find(victron_device_type_t type)
 }
 
 ui_device_view_t *ui_view_registry_ensure(ui_state_t *ui,
-                                          victron_device_type_t type,
+                                          victron_record_type_t type,
                                           lv_obj_t *parent)
 {
     if (ui == NULL) {
@@ -62,7 +62,7 @@ ui_device_view_t *ui_view_registry_ensure(ui_state_t *ui,
     return view;
 }
 
-const char *ui_view_registry_name(victron_device_type_t type)
+const char *ui_view_registry_name(victron_record_type_t type)
 {
     const ui_view_descriptor_t *desc = ui_view_registry_find(type);
     return desc ? desc->name : "Unknown";

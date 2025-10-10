@@ -249,14 +249,14 @@ static int ble_gap_event_handler(struct ble_gap_event *event, void *arg)
                      load_current_A);
 
             if (data_cb) {
-                victron_data_t parsed = { .type = VICTRON_DEVICE_TYPE_SOLAR_CHARGER };
-                parsed.payload.solar.device_state = r->device_state;
-                parsed.payload.solar.error_code = r->charger_error;
-                parsed.payload.solar.battery_voltage_centi = r->battery_voltage_centi;
-                parsed.payload.solar.battery_current_deci = r->battery_current_deci;
-                parsed.payload.solar.today_yield_centikwh = r->yield_today_centikwh;
-                parsed.payload.solar.input_power_w = r->pv_power_w;
-                parsed.payload.solar.load_current_deci = load_raw;
+                victron_data_t parsed = { .type = VICTRON_BLE_RECORD_SOLAR_CHARGER };
+                parsed.record.solar.device_state = r->device_state;
+                parsed.record.solar.charger_error = r->charger_error;
+                parsed.record.solar.battery_voltage_centi = r->battery_voltage_centi;
+                parsed.record.solar.battery_current_deci = r->battery_current_deci;
+                parsed.record.solar.yield_today_centikwh = r->yield_today_centikwh;
+                parsed.record.solar.pv_power_w = r->pv_power_w;
+                parsed.record.solar.load_current_deci = load_raw;
                 data_cb(&parsed);
             }
             break;
@@ -280,7 +280,6 @@ static int ble_gap_event_handler(struct ble_gap_event *event, void *arg)
             uint32_t soc_bits = tail & ((1u << 10) - 1u);
 
             float current_A   = current_bits / 1000.0f;
-            float consumed_Ah = -consumed_bits / 10.0f;
 
             ESP_LOGI(TAG, "=== Battery Monitor ===");
             ESP_LOGI(TAG, "Vbat=%.2fV Ibat=%.3fA SOC=%.1f%% TTG=%u min",
@@ -289,15 +288,15 @@ static int ble_gap_event_handler(struct ble_gap_event *event, void *arg)
                      aux_input, aux_raw / 100.0f, alarm_raw);
 
             if (data_cb) {
-                victron_data_t parsed = { .type = VICTRON_DEVICE_TYPE_BATTERY_MONITOR };
-                parsed.payload.battery.time_to_go_minutes = ttg_raw;
-                parsed.payload.battery.battery_voltage_centi = voltage_raw;
-                parsed.payload.battery.alarm_reason = alarm_raw;
-                parsed.payload.battery.aux_value = aux_raw;
-                parsed.payload.battery.aux_input = aux_input;
-                parsed.payload.battery.battery_current_milli = current_bits;
-                parsed.payload.battery.consumed_ah_deci = consumed_bits;
-                parsed.payload.battery.soc_deci_percent = soc_bits;
+                victron_data_t parsed = { .type = VICTRON_BLE_RECORD_BATTERY_MONITOR };
+                parsed.record.battery.time_to_go_minutes = ttg_raw;
+                parsed.record.battery.battery_voltage_centi = voltage_raw;
+                parsed.record.battery.alarm_reason = alarm_raw;
+                parsed.record.battery.aux_value = aux_raw;
+                parsed.record.battery.aux_input = aux_input;
+                parsed.record.battery.battery_current_milli = current_bits;
+                parsed.record.battery.consumed_ah_deci = consumed_bits;
+                parsed.record.battery.soc_deci_percent = soc_bits;
                 data_cb(&parsed);
             }
             break;

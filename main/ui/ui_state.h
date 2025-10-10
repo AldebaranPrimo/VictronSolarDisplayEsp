@@ -69,7 +69,7 @@ typedef struct ui_state {
     uint8_t brightness;
     bool victron_debug_enabled;
     lv_obj_t *victron_debug_checkbox;
-    victron_device_type_t current_device_type;
+    victron_record_type_t current_device_type;
     struct ui_device_view *active_view;
     struct ui_device_view *views[UI_MAX_DEVICE_VIEWS];
     bool has_received_data;

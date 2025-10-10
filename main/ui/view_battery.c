@@ -169,7 +169,7 @@ static void battery_view_update(ui_device_view_t *view, const victron_data_t *da
 {
     ui_battery_view_t *battery = battery_view_from_base(view);
     if (battery == NULL || data == NULL ||
-        data->type != VICTRON_DEVICE_TYPE_BATTERY_MONITOR) {
+        data->type != VICTRON_BLE_RECORD_BATTERY_MONITOR) {
         return;
     }
 
@@ -186,7 +186,7 @@ static void battery_view_update(ui_device_view_t *view, const victron_data_t *da
     }
 
 
-    const victron_battery_data_t *b = &data->payload.battery;
+    const victron_record_battery_monitor_t *b = &data->record.battery;
     if (view->ui && view->ui->lbl_error) {
         if (b->alarm_reason == 0) {
             lv_label_set_text(view->ui->lbl_error, "");
@@ -227,10 +227,10 @@ static void battery_view_destroy(ui_device_view_t *view)
 static void format_primary_voltage(lv_obj_t *label, const victron_data_t *data)
 {
     if (label == NULL || data == NULL ||
-        data->type != VICTRON_DEVICE_TYPE_BATTERY_MONITOR) {
+        data->type != VICTRON_BLE_RECORD_BATTERY_MONITOR) {
         return;
     }
-    const victron_battery_data_t *b = &data->payload.battery;
+    const victron_record_battery_monitor_t *b = &data->record.battery;
     ui_label_set_unsigned_fixed(label,
                                 (unsigned)b->battery_voltage_centi,
                                 100, 2, " V");
@@ -239,10 +239,10 @@ static void format_primary_voltage(lv_obj_t *label, const victron_data_t *data)
 static void format_primary_current(lv_obj_t *label, const victron_data_t *data)
 {
     if (label == NULL || data == NULL ||
-        data->type != VICTRON_DEVICE_TYPE_BATTERY_MONITOR) {
+        data->type != VICTRON_BLE_RECORD_BATTERY_MONITOR) {
         return;
     }
-    const victron_battery_data_t *b = &data->payload.battery;
+    const victron_record_battery_monitor_t *b = &data->record.battery;
     int current_cent = ui_round_div_signed((int)b->battery_current_milli, 10);
     ui_label_set_signed_fixed(label, current_cent, 100, 2, " A");
 }
@@ -250,10 +250,10 @@ static void format_primary_current(lv_obj_t *label, const victron_data_t *data)
 static void format_primary_soc(lv_obj_t *label, const victron_data_t *data)
 {
     if (label == NULL || data == NULL ||
-        data->type != VICTRON_DEVICE_TYPE_BATTERY_MONITOR) {
+        data->type != VICTRON_BLE_RECORD_BATTERY_MONITOR) {
         return;
     }
-    const victron_battery_data_t *b = &data->payload.battery;
+    const victron_record_battery_monitor_t *b = &data->record.battery;
     ui_label_set_unsigned_fixed(label,
                                 (unsigned)b->soc_deci_percent,
                                 10, 1, " %");
@@ -262,10 +262,10 @@ static void format_primary_soc(lv_obj_t *label, const victron_data_t *data)
 static void format_secondary_ttg(lv_obj_t *label, const victron_data_t *data)
 {
     if (label == NULL || data == NULL ||
-        data->type != VICTRON_DEVICE_TYPE_BATTERY_MONITOR) {
+        data->type != VICTRON_BLE_RECORD_BATTERY_MONITOR) {
         return;
     }
-    const victron_battery_data_t *b = &data->payload.battery;
+    const victron_record_battery_monitor_t *b = &data->record.battery;
     uint16_t ttg = b->time_to_go_minutes;
     lv_label_set_text_fmt(label, "%uh %02um",
                           (unsigned)(ttg / 60), (unsigned)(ttg % 60));
@@ -274,10 +274,10 @@ static void format_secondary_ttg(lv_obj_t *label, const victron_data_t *data)
 static void format_secondary_consumed(lv_obj_t *label, const victron_data_t *data)
 {
     if (label == NULL || data == NULL ||
-        data->type != VICTRON_DEVICE_TYPE_BATTERY_MONITOR) {
+        data->type != VICTRON_BLE_RECORD_BATTERY_MONITOR) {
         return;
     }
-    const victron_battery_data_t *b = &data->payload.battery;
+    const victron_record_battery_monitor_t *b = &data->record.battery;
     ui_label_set_signed_fixed(label,
                               (int)b->consumed_ah_deci,
                               10, 1, " Ah");
@@ -286,7 +286,7 @@ static void format_secondary_consumed(lv_obj_t *label, const victron_data_t *dat
 static void format_secondary_aux(lv_obj_t *label, const victron_data_t *data)
 {
     if (label == NULL || data == NULL ||
-        data->type != VICTRON_DEVICE_TYPE_BATTERY_MONITOR) {
+        data->type != VICTRON_BLE_RECORD_BATTERY_MONITOR) {
         return;
     }
 
@@ -302,7 +302,7 @@ static void format_secondary_aux(lv_obj_t *label, const victron_data_t *data)
         }
     }
 
-    const victron_battery_data_t *b = &data->payload.battery;
+    const victron_record_battery_monitor_t *b = &data->record.battery;
     char aux_buf[32];
 
     if ((b->aux_input & 0x03u) == 0x03u) {
