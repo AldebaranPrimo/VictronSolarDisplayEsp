@@ -342,6 +342,10 @@ static void create_system_settings_page(ui_state_t *ui, lv_obj_t *page_system)
     lv_obj_add_style(ui->lbl_device_type, &ui->styles.small, 0);
     lv_label_set_text(ui->lbl_device_type, "Device: --");
 
+    ui->lbl_product_name = lv_label_create(sys_container);
+    lv_obj_add_style(ui->lbl_product_name, &ui->styles.small, 0);
+    lv_label_set_text(ui->lbl_product_name, "Product: --");
+
     ui->lbl_error = lv_label_create(sys_container);
     lv_obj_add_style(ui->lbl_error, &ui->styles.small, 0);
     lv_label_set_text(ui->lbl_error, "Err: 0");

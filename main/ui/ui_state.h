@@ -63,6 +63,7 @@ typedef struct ui_state {
     ui_screensaver_state_t screensaver;
     lv_obj_t *lbl_error;
     lv_obj_t *lbl_device_type;
+    lv_obj_t *lbl_product_name;
     lv_obj_t *lbl_no_data;
     lv_obj_t *ta_mac;
     lv_obj_t *ta_key;
@@ -70,6 +71,7 @@ typedef struct ui_state {
     bool victron_debug_enabled;
     lv_obj_t *victron_debug_checkbox;
     victron_record_type_t current_device_type;
+    uint16_t current_product_id;
     struct ui_device_view *active_view;
     struct ui_device_view *views[UI_MAX_DEVICE_VIEWS];
     bool has_received_data;

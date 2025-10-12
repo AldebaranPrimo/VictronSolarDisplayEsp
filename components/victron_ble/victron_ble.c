@@ -1,7 +1,9 @@
 #include "victron_ble.h"
 #include "config_storage.h"
 #include "victron_records.h"
+#include "victron_products.h"
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdio.h>
 #include <string.h>
 #include "esp_log.h"
@@ -25,14 +27,19 @@ static bool victron_debug_enabled = false;
 
 static uint8_t aes_key[16];
 
+typedef enum {
+    VICTRON_MANUFACTURER_RECORD_PRODUCT_ADVERTISEMENT = 0x10,
+} victron_manufacturer_record_type_t;
+
 typedef struct __attribute__((packed)) {
     uint16_t vendorID;
-    uint8_t  beaconType;
-    uint8_t  unknownData1[3];
+    uint8_t  manufacturer_record_type;
+    uint8_t  manufacturer_record_length;
+    uint16_t product_id;
     uint8_t  victronRecordType;
     uint16_t nonceDataCounter;
     uint8_t  encryptKeyMatch;
-    uint8_t  victronEncryptedData[21];
+    uint8_t  victronEncryptedData[VICTRON_ENCRYPTED_DATA_MAX_SIZE];
     uint8_t  nullPad;
 } victronManufacturerData;
 
@@ -167,6 +174,22 @@ static int ble_gap_event_handler(struct ble_gap_event *event, void *arg)
     if (mdata->vendorID != VICTRON_MANUFACTURER_ID)
         return 0;
 
+    if (mdata->manufacturer_record_type != VICTRON_MANUFACTURER_RECORD_PRODUCT_ADVERTISEMENT) {
+        VDBG("Skipping manufacturer record type 0x%02X",
+             (unsigned)mdata->manufacturer_record_type);
+        return 0;
+    }
+
+    uint16_t product_id = mdata->product_id;
+    const char *product_name = victron_product_name(product_id);
+    if (victron_debug_enabled) {
+        if (product_name) {
+            ESP_LOGI(TAG, "Product ID: 0x%04X (%s)", product_id, product_name);
+        } else {
+            ESP_LOGI(TAG, "Product ID: 0x%04X (unknown)", product_id);
+        }
+    }
+
     // Verbose packet log
     VDBG("=== Victron BLE Packet Received ===");
     VDBG("MAC: %02X:%02X:%02X:%02X:%02X:%02X",
@@ -249,7 +272,10 @@ static int ble_gap_event_handler(struct ble_gap_event *event, void *arg)
                      load_current_A);
 
             if (data_cb) {
-                victron_data_t parsed = { .type = VICTRON_BLE_RECORD_SOLAR_CHARGER };
+                victron_data_t parsed = {
+                    .type = VICTRON_BLE_RECORD_SOLAR_CHARGER,
+                    .product_id = product_id
+                };
                 parsed.record.solar.device_state = r->device_state;
                 parsed.record.solar.charger_error = r->charger_error;
                 parsed.record.solar.battery_voltage_centi = r->battery_voltage_centi;
@@ -288,7 +314,10 @@ static int ble_gap_event_handler(struct ble_gap_event *event, void *arg)
                      aux_input, aux_raw / 100.0f, alarm_raw);
 
             if (data_cb) {
-                victron_data_t parsed = { .type = VICTRON_BLE_RECORD_BATTERY_MONITOR };
+                victron_data_t parsed = {
+                    .type = VICTRON_BLE_RECORD_BATTERY_MONITOR,
+                    .product_id = product_id
+                };
                 parsed.record.battery.time_to_go_minutes = ttg_raw;
                 parsed.record.battery.battery_voltage_centi = voltage_raw;
                 parsed.record.battery.alarm_reason = alarm_raw;
@@ -329,7 +358,10 @@ static int ble_gap_event_handler(struct ble_gap_event *event, void *arg)
                      (unsigned)ac_apparent_power_va);
 
             if (data_cb) {
-                victron_data_t parsed = { .type = VICTRON_BLE_RECORD_INVERTER };
+                victron_data_t parsed = {
+                    .type = VICTRON_BLE_RECORD_INVERTER,
+                    .product_id = product_id
+                };
                 parsed.record.inverter.device_state = device_state;
                 parsed.record.inverter.alarm_reason = alarm_reason;
                 parsed.record.inverter.battery_voltage_centi = battery_voltage_centi;
@@ -366,7 +398,10 @@ static int ble_gap_event_handler(struct ble_gap_event *event, void *arg)
                      (unsigned long)off_reason);
 
             if (data_cb) {
-                victron_data_t parsed = { .type = VICTRON_BLE_RECORD_DCDC_CONVERTER };
+                victron_data_t parsed = {
+                    .type = VICTRON_BLE_RECORD_DCDC_CONVERTER,
+                    .product_id = product_id
+                };
                 parsed.record.dcdc.device_state = device_state;
                 parsed.record.dcdc.charger_error = charger_error;
                 parsed.record.dcdc.input_voltage_centi = input_voltage_centi;
@@ -407,7 +442,10 @@ static int ble_gap_event_handler(struct ble_gap_event *event, void *arg)
                      temperature_c);
 
             if (data_cb) {
-                victron_data_t parsed = { .type = VICTRON_BLE_RECORD_SMART_LITHIUM };
+                victron_data_t parsed = {
+                    .type = VICTRON_BLE_RECORD_SMART_LITHIUM,
+                    .product_id = product_id
+                };
                 parsed.record.lithium.bms_flags = bms_flags;
                 parsed.record.lithium.error_flags = error_flags;
                 parsed.record.lithium.cell1_centi = cell_values[0];

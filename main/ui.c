@@ -8,6 +8,7 @@
 #include "lv_port.h"
 #include "esp_log.h"
 #include "victron_ble.h"
+#include "victron_products.h"
 #include "nvs_flash.h"
 #include "config_storage.h"
 #include <stdio.h>
@@ -26,6 +27,7 @@ static const char *TAG_UI = "UI_MODULE";
 static ui_state_t g_ui = {
     .brightness = 100,
     .current_device_type = VICTRON_BLE_RECORD_TEST,
+    .current_product_id = 0,
     .has_received_data = false,
     .tab_settings_index = UINT16_MAX,
     .tab_relay_index = UINT16_MAX,
@@ -244,6 +246,25 @@ void ui_on_panel_data(const victron_data_t *d) {
     const char *type_str = device_type_name(d->type);
     if (ui->lbl_device_type) {
         lv_label_set_text_fmt(ui->lbl_device_type, "Device: %s", type_str);
+    }
+
+    ui->current_product_id = d->product_id;
+    if (ui->lbl_product_name) {
+        if (d->product_id != 0) {
+            const char *prod_name = victron_product_name(d->product_id);
+            if (prod_name != NULL) {
+                lv_label_set_text_fmt(ui->lbl_product_name,
+                                      "Product: %s (0x%04X)",
+                                      prod_name,
+                                      (unsigned)d->product_id);
+            } else {
+                lv_label_set_text_fmt(ui->lbl_product_name,
+                                      "Product: 0x%04X",
+                                      (unsigned)d->product_id);
+            }
+        } else {
+            lv_label_set_text(ui->lbl_product_name, "Product: --");
+        }
     }
 
     ensure_device_layout(ui, d->type);
