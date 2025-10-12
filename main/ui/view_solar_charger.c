@@ -1,4 +1,4 @@
-#include "view_solar.h"
+#include "view_solar_charger.h"
 
 #include <stdlib.h>
 #include <string.h>

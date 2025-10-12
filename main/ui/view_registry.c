@@ -1,7 +1,7 @@
 #include "view_registry.h"
 
-#include "view_solar.h"
-#include "view_battery.h"
+#include "view_solar_charger.h"
+#include "view_battery_monitor.h"
 #include "esp_log.h"
 
 static const char *TAG = "UI_VIEW_REGISTRY";

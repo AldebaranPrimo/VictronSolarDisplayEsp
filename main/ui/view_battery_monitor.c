@@ -1,4 +1,4 @@
-#include "view_battery.h"
+#include "view_battery_monitor.h"
 
 #include <stdlib.h>
 #include <string.h>
