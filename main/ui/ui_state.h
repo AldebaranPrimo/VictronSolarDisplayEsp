@@ -8,7 +8,7 @@
 
 struct ui_device_view;
 
-#define UI_MAX_DEVICE_VIEWS 3
+#define UI_MAX_DEVICE_VIEWS 32
 #define UI_MAX_RELAY_BUTTONS 8
 #define UI_RELAY_GPIO_UNASSIGNED UINT8_MAX
 

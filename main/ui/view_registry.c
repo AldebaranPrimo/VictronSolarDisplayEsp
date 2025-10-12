@@ -2,6 +2,7 @@
 
 #include "view_solar_charger.h"
 #include "view_battery_monitor.h"
+#include "view_simple_devices.h"
 #include "esp_log.h"
 
 static const char *TAG = "UI_VIEW_REGISTRY";
@@ -9,6 +10,17 @@ static const char *TAG = "UI_VIEW_REGISTRY";
 static const ui_view_descriptor_t VIEW_DESCRIPTORS[] = {
     { VICTRON_BLE_RECORD_SOLAR_CHARGER, "0x01 Solar Charger", ui_solar_view_create },
     { VICTRON_BLE_RECORD_BATTERY_MONITOR, "0x02 Battery Monitor", ui_battery_view_create },
+    { VICTRON_BLE_RECORD_INVERTER, "0x03 Inverter", ui_inverter_view_create },
+    { VICTRON_BLE_RECORD_DCDC_CONVERTER, "0x04 DC/DC Converter", ui_dcdc_converter_view_create },
+    { VICTRON_BLE_RECORD_SMART_LITHIUM, "0x05 Smart Lithium", ui_smart_lithium_view_create },
+    { VICTRON_BLE_RECORD_INVERTER_RS, "0x06 Inverter RS", ui_inverter_rs_view_create },
+    { VICTRON_BLE_RECORD_AC_CHARGER, "0x08 AC Charger", ui_ac_charger_view_create },
+    { VICTRON_BLE_RECORD_SMART_BATTERY_PROTECT, "0x09 Smart Battery Protect", ui_sbp_view_create },
+    { VICTRON_BLE_RECORD_LYNX_SMART_BMS, "0x0A Lynx Smart BMS", ui_lynx_bms_view_create },
+    { VICTRON_BLE_RECORD_MULTI_RS, "0x0B Multi RS", ui_multi_rs_view_create },
+    { VICTRON_BLE_RECORD_VE_BUS, "0x0C VE.Bus", ui_ve_bus_view_create },
+    { VICTRON_BLE_RECORD_DC_ENERGY_METER, "0x0D DC Energy Meter", ui_dc_energy_meter_view_create },
+    { VICTRON_BLE_RECORD_ORION_XS, "0x0F Orion XS", ui_orion_xs_view_create },
 };
 
 static size_t descriptor_count(void)
