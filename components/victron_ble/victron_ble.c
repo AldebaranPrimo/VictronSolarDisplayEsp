@@ -303,13 +303,41 @@ static int ble_gap_event_handler(struct ble_gap_event *event, void *arg)
         }
 
         case VICTRON_BLE_RECORD_INVERTER: {
-            const victron_record_inverter_t *r = (const victron_record_inverter_t *)output;
+            if (encr_size < 11) {
+                ESP_LOGW(TAG, "Inverter payload too short: %d", encr_size);
+                break;
+            }
+
+            const uint8_t *b = output;
+            uint8_t device_state = b[0];
+            uint16_t alarm_reason = b[1] | (b[2] << 8);
+            int16_t battery_voltage_centi = (int16_t)(b[3] | (b[4] << 8));
+            uint16_t ac_apparent_power_va = b[5] | (b[6] << 8);
+
+            uint32_t tail = (uint32_t)b[7]
+                          | ((uint32_t)b[8] << 8)
+                          | ((uint32_t)b[9] << 16)
+                          | ((uint32_t)b[10] << 24);
+            uint16_t ac_voltage_centi = (uint16_t)(tail & 0x7FFFu);
+            uint16_t ac_current_deci = (uint16_t)((tail >> 15) & 0x7FFu);
+
             ESP_LOGI(TAG, "=== Inverter ===");
-            ESP_LOGI(TAG, "Vbat=%.2fV AC=%.2fV Iac=%.1fA P=%.1fVA",
-                     r->battery_voltage_centi / 100.0f,
-                     r->ac_voltage_centi / 100.0f,
-                     r->ac_current_deci / 10.0f,
-                     r->ac_apparent_power_va / 1.0f);
+            ESP_LOGI(TAG, "Vbat=%.2fV AC=%.2fV Iac=%.1fA P=%uVA",
+                     battery_voltage_centi / 100.0f,
+                     ac_voltage_centi / 100.0f,
+                     ac_current_deci / 10.0f,
+                     (unsigned)ac_apparent_power_va);
+
+            if (data_cb) {
+                victron_data_t parsed = { .type = VICTRON_BLE_RECORD_INVERTER };
+                parsed.record.inverter.device_state = device_state;
+                parsed.record.inverter.alarm_reason = alarm_reason;
+                parsed.record.inverter.battery_voltage_centi = battery_voltage_centi;
+                parsed.record.inverter.ac_apparent_power_va = ac_apparent_power_va;
+                parsed.record.inverter.ac_voltage_centi = ac_voltage_centi;
+                parsed.record.inverter.ac_current_deci = ac_current_deci;
+                data_cb(&parsed);
+            }
             break;
         }
 
