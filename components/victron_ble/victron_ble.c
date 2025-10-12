@@ -1,7 +1,9 @@
 #include "victron_ble.h"
 #include "config_storage.h"
 #include "victron_records.h"
+#include "victron_products.h"
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdio.h>
 #include <string.h>
 #include "esp_log.h"
@@ -25,14 +27,19 @@ static bool victron_debug_enabled = false;
 
 static uint8_t aes_key[16];
 
+typedef enum {
+    VICTRON_MANUFACTURER_RECORD_PRODUCT_ADVERTISEMENT = 0x10,
+} victron_manufacturer_record_type_t;
+
 typedef struct __attribute__((packed)) {
     uint16_t vendorID;
-    uint8_t  beaconType;
-    uint8_t  unknownData1[3];
+    uint8_t  manufacturer_record_type;
+    uint8_t  manufacturer_record_length;
+    uint16_t product_id;
     uint8_t  victronRecordType;
     uint16_t nonceDataCounter;
     uint8_t  encryptKeyMatch;
-    uint8_t  victronEncryptedData[21];
+    uint8_t  victronEncryptedData[VICTRON_ENCRYPTED_DATA_MAX_SIZE];
     uint8_t  nullPad;
 } victronManufacturerData;
 
@@ -167,6 +174,22 @@ static int ble_gap_event_handler(struct ble_gap_event *event, void *arg)
     if (mdata->vendorID != VICTRON_MANUFACTURER_ID)
         return 0;
 
+    if (mdata->manufacturer_record_type != VICTRON_MANUFACTURER_RECORD_PRODUCT_ADVERTISEMENT) {
+        VDBG("Skipping manufacturer record type 0x%02X",
+             (unsigned)mdata->manufacturer_record_type);
+        return 0;
+    }
+
+    uint16_t product_id = mdata->product_id;
+    const char *product_name = victron_product_name(product_id);
+    if (victron_debug_enabled) {
+        if (product_name) {
+            ESP_LOGI(TAG, "Product ID: 0x%04X (%s)", product_id, product_name);
+        } else {
+            ESP_LOGI(TAG, "Product ID: 0x%04X (unknown)", product_id);
+        }
+    }
+
     // Verbose packet log
     VDBG("=== Victron BLE Packet Received ===");
     VDBG("MAC: %02X:%02X:%02X:%02X:%02X:%02X",
@@ -249,7 +272,10 @@ static int ble_gap_event_handler(struct ble_gap_event *event, void *arg)
                      load_current_A);
 
             if (data_cb) {
-                victron_data_t parsed = { .type = VICTRON_BLE_RECORD_SOLAR_CHARGER };
+                victron_data_t parsed = {
+                    .type = VICTRON_BLE_RECORD_SOLAR_CHARGER,
+                    .product_id = product_id
+                };
                 parsed.record.solar.device_state = r->device_state;
                 parsed.record.solar.charger_error = r->charger_error;
                 parsed.record.solar.battery_voltage_centi = r->battery_voltage_centi;
@@ -288,7 +314,10 @@ static int ble_gap_event_handler(struct ble_gap_event *event, void *arg)
                      aux_input, aux_raw / 100.0f, alarm_raw);
 
             if (data_cb) {
-                victron_data_t parsed = { .type = VICTRON_BLE_RECORD_BATTERY_MONITOR };
+                victron_data_t parsed = {
+                    .type = VICTRON_BLE_RECORD_BATTERY_MONITOR,
+                    .product_id = product_id
+                };
                 parsed.record.battery.time_to_go_minutes = ttg_raw;
                 parsed.record.battery.battery_voltage_centi = voltage_raw;
                 parsed.record.battery.alarm_reason = alarm_raw;
@@ -303,13 +332,135 @@ static int ble_gap_event_handler(struct ble_gap_event *event, void *arg)
         }
 
         case VICTRON_BLE_RECORD_INVERTER: {
-            const victron_record_inverter_t *r = (const victron_record_inverter_t *)output;
+            if (encr_size < 11) {
+                ESP_LOGW(TAG, "Inverter payload too short: %d", encr_size);
+                break;
+            }
+
+            const uint8_t *b = output;
+            uint8_t device_state = b[0];
+            uint16_t alarm_reason = b[1] | (b[2] << 8);
+            int16_t battery_voltage_centi = (int16_t)(b[3] | (b[4] << 8));
+            uint16_t ac_apparent_power_va = b[5] | (b[6] << 8);
+
+            uint32_t tail = (uint32_t)b[7]
+                          | ((uint32_t)b[8] << 8)
+                          | ((uint32_t)b[9] << 16)
+                          | ((uint32_t)b[10] << 24);
+            uint16_t ac_voltage_centi = (uint16_t)(tail & 0x7FFFu);
+            uint16_t ac_current_deci = (uint16_t)((tail >> 15) & 0x7FFu);
+
             ESP_LOGI(TAG, "=== Inverter ===");
-            ESP_LOGI(TAG, "Vbat=%.2fV AC=%.2fV Iac=%.1fA P=%.1fVA",
-                     r->battery_voltage_centi / 100.0f,
-                     r->ac_voltage_centi / 100.0f,
-                     r->ac_current_deci / 10.0f,
-                     r->ac_apparent_power_va / 1.0f);
+            ESP_LOGI(TAG, "Vbat=%.2fV AC=%.2fV Iac=%.1fA P=%uVA",
+                     battery_voltage_centi / 100.0f,
+                     ac_voltage_centi / 100.0f,
+                     ac_current_deci / 10.0f,
+                     (unsigned)ac_apparent_power_va);
+
+            if (data_cb) {
+                victron_data_t parsed = {
+                    .type = VICTRON_BLE_RECORD_INVERTER,
+                    .product_id = product_id
+                };
+                parsed.record.inverter.device_state = device_state;
+                parsed.record.inverter.alarm_reason = alarm_reason;
+                parsed.record.inverter.battery_voltage_centi = battery_voltage_centi;
+                parsed.record.inverter.ac_apparent_power_va = ac_apparent_power_va;
+                parsed.record.inverter.ac_voltage_centi = ac_voltage_centi;
+                parsed.record.inverter.ac_current_deci = ac_current_deci;
+                data_cb(&parsed);
+            }
+            break;
+        }
+
+        case VICTRON_BLE_RECORD_DCDC_CONVERTER: {
+            if (encr_size < 10) {
+                ESP_LOGW(TAG, "DC/DC payload too short: %d", encr_size);
+                break;
+            }
+
+            const uint8_t *b = output;
+            uint8_t device_state = b[0];
+            uint8_t charger_error = b[1];
+            uint16_t input_voltage_centi = (uint16_t)(b[2] | (b[3] << 8));
+            uint16_t output_voltage_centi = (uint16_t)(b[4] | (b[5] << 8));
+            uint32_t off_reason = (uint32_t)b[6]
+                                | ((uint32_t)b[7] << 8)
+                                | ((uint32_t)b[8] << 16)
+                                | ((uint32_t)b[9] << 24);
+
+            ESP_LOGI(TAG, "=== DC/DC Converter ===");
+            ESP_LOGI(TAG, "State=%u Error=0x%02X Vin=%.2fV Vout=%.2fV OffReason=0x%08lX",
+                     (unsigned)device_state,
+                     (unsigned)charger_error,
+                     input_voltage_centi / 100.0f,
+                     output_voltage_centi / 100.0f,
+                     (unsigned long)off_reason);
+
+            if (data_cb) {
+                victron_data_t parsed = {
+                    .type = VICTRON_BLE_RECORD_DCDC_CONVERTER,
+                    .product_id = product_id
+                };
+                parsed.record.dcdc.device_state = device_state;
+                parsed.record.dcdc.charger_error = charger_error;
+                parsed.record.dcdc.input_voltage_centi = input_voltage_centi;
+                parsed.record.dcdc.output_voltage_centi = output_voltage_centi;
+                parsed.record.dcdc.off_reason = off_reason;
+                data_cb(&parsed);
+            }
+            break;
+        }
+
+        case VICTRON_BLE_RECORD_SMART_LITHIUM: {
+            if (encr_size < 16) {
+                ESP_LOGW(TAG, "Smart Lithium payload too short: %d", encr_size);
+                break;
+            }
+
+            const uint8_t *b = output;
+            uint32_t bms_flags = (uint32_t)b[0]
+                               | ((uint32_t)b[1] << 8)
+                               | ((uint32_t)b[2] << 16)
+                               | ((uint32_t)b[3] << 24);
+            uint16_t error_flags = (uint16_t)(b[4] | (b[5] << 8));
+            uint8_t cell_values[8];
+            for (int i = 0; i < 8; ++i) {
+                cell_values[i] = b[6 + i];
+            }
+            uint16_t packed_voltage = (uint16_t)(b[14] | (b[15] << 8));
+            uint16_t battery_voltage_centi = (packed_voltage & 0x0FFFu);
+            uint8_t balancer_status = (uint8_t)((packed_voltage >> 12) & 0x0Fu);
+            uint8_t temperature_raw = (encr_size > 16) ? b[16] : 0;
+            int temperature_c = (int)temperature_raw - 40;
+
+            ESP_LOGI(TAG, "=== Smart Lithium ===");
+            ESP_LOGI(TAG, "Flags=0x%08lX Err=0x%04X Batt=%.2fV Temp=%dC",
+                     (unsigned long)bms_flags,
+                     (unsigned)error_flags,
+                     battery_voltage_centi / 100.0f,
+                     temperature_c);
+
+            if (data_cb) {
+                victron_data_t parsed = {
+                    .type = VICTRON_BLE_RECORD_SMART_LITHIUM,
+                    .product_id = product_id
+                };
+                parsed.record.lithium.bms_flags = bms_flags;
+                parsed.record.lithium.error_flags = error_flags;
+                parsed.record.lithium.cell1_centi = cell_values[0];
+                parsed.record.lithium.cell2_centi = cell_values[1];
+                parsed.record.lithium.cell3_centi = cell_values[2];
+                parsed.record.lithium.cell4_centi = cell_values[3];
+                parsed.record.lithium.cell5_centi = cell_values[4];
+                parsed.record.lithium.cell6_centi = cell_values[5];
+                parsed.record.lithium.cell7_centi = cell_values[6];
+                parsed.record.lithium.cell8_centi = cell_values[7];
+                parsed.record.lithium.battery_voltage_centi = battery_voltage_centi;
+                parsed.record.lithium.balancer_status = balancer_status;
+                parsed.record.lithium.temperature_c = temperature_raw;
+                data_cb(&parsed);
+            }
             break;
         }
 

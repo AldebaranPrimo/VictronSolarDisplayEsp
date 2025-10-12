@@ -4,7 +4,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
-#include "victron_records.h"   // unified Victron record definitions
+#include "victron_records.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -16,6 +16,7 @@ extern "C" {
 
 typedef struct {
     victron_record_type_t type;  // record type (e.g., SOLAR_CHARGER, BATTERY_MONITOR)
+    uint16_t              product_id; // Victron product identifier
     victron_record_t      record; // parsed record data (union of all device types)
 } victron_data_t;
 
