@@ -242,7 +242,7 @@ After saving the key, the device will reboot and begin displaying live data.
 ---
 ## Hardware Build Guide
 
-Assembly notes contributed by [NomadicNico](https://github.com/NomadicNico) – thank you!
+Assembly notes and 3D printed enclosure contributed by [NomadicNico](https://github.com/NomadicNico) – thank you!
 
 ### Bill of Materials
 
