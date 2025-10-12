@@ -341,6 +341,91 @@ static int ble_gap_event_handler(struct ble_gap_event *event, void *arg)
             break;
         }
 
+        case VICTRON_BLE_RECORD_DCDC_CONVERTER: {
+            if (encr_size < 10) {
+                ESP_LOGW(TAG, "DC/DC payload too short: %d", encr_size);
+                break;
+            }
+
+            const uint8_t *b = output;
+            uint8_t device_state = b[0];
+            uint8_t charger_error = b[1];
+            uint16_t input_voltage_centi = (uint16_t)(b[2] | (b[3] << 8));
+            uint16_t output_voltage_centi = (uint16_t)(b[4] | (b[5] << 8));
+            uint32_t off_reason = (uint32_t)b[6]
+                                | ((uint32_t)b[7] << 8)
+                                | ((uint32_t)b[8] << 16)
+                                | ((uint32_t)b[9] << 24);
+
+            ESP_LOGI(TAG, "=== DC/DC Converter ===");
+            ESP_LOGI(TAG, "State=%u Error=0x%02X Vin=%.2fV Vout=%.2fV OffReason=0x%08lX",
+                     (unsigned)device_state,
+                     (unsigned)charger_error,
+                     input_voltage_centi / 100.0f,
+                     output_voltage_centi / 100.0f,
+                     (unsigned long)off_reason);
+
+            if (data_cb) {
+                victron_data_t parsed = { .type = VICTRON_BLE_RECORD_DCDC_CONVERTER };
+                parsed.record.dcdc.device_state = device_state;
+                parsed.record.dcdc.charger_error = charger_error;
+                parsed.record.dcdc.input_voltage_centi = input_voltage_centi;
+                parsed.record.dcdc.output_voltage_centi = output_voltage_centi;
+                parsed.record.dcdc.off_reason = off_reason;
+                data_cb(&parsed);
+            }
+            break;
+        }
+
+        case VICTRON_BLE_RECORD_SMART_LITHIUM: {
+            if (encr_size < 16) {
+                ESP_LOGW(TAG, "Smart Lithium payload too short: %d", encr_size);
+                break;
+            }
+
+            const uint8_t *b = output;
+            uint32_t bms_flags = (uint32_t)b[0]
+                               | ((uint32_t)b[1] << 8)
+                               | ((uint32_t)b[2] << 16)
+                               | ((uint32_t)b[3] << 24);
+            uint16_t error_flags = (uint16_t)(b[4] | (b[5] << 8));
+            uint8_t cell_values[8];
+            for (int i = 0; i < 8; ++i) {
+                cell_values[i] = b[6 + i];
+            }
+            uint16_t packed_voltage = (uint16_t)(b[14] | (b[15] << 8));
+            uint16_t battery_voltage_centi = (packed_voltage & 0x0FFFu);
+            uint8_t balancer_status = (uint8_t)((packed_voltage >> 12) & 0x0Fu);
+            uint8_t temperature_raw = (encr_size > 16) ? b[16] : 0;
+            int temperature_c = (int)temperature_raw - 40;
+
+            ESP_LOGI(TAG, "=== Smart Lithium ===");
+            ESP_LOGI(TAG, "Flags=0x%08lX Err=0x%04X Batt=%.2fV Temp=%dC",
+                     (unsigned long)bms_flags,
+                     (unsigned)error_flags,
+                     battery_voltage_centi / 100.0f,
+                     temperature_c);
+
+            if (data_cb) {
+                victron_data_t parsed = { .type = VICTRON_BLE_RECORD_SMART_LITHIUM };
+                parsed.record.lithium.bms_flags = bms_flags;
+                parsed.record.lithium.error_flags = error_flags;
+                parsed.record.lithium.cell1_centi = cell_values[0];
+                parsed.record.lithium.cell2_centi = cell_values[1];
+                parsed.record.lithium.cell3_centi = cell_values[2];
+                parsed.record.lithium.cell4_centi = cell_values[3];
+                parsed.record.lithium.cell5_centi = cell_values[4];
+                parsed.record.lithium.cell6_centi = cell_values[5];
+                parsed.record.lithium.cell7_centi = cell_values[6];
+                parsed.record.lithium.cell8_centi = cell_values[7];
+                parsed.record.lithium.battery_voltage_centi = battery_voltage_centi;
+                parsed.record.lithium.balancer_status = balancer_status;
+                parsed.record.lithium.temperature_c = temperature_raw;
+                data_cb(&parsed);
+            }
+            break;
+        }
+
         default:
             ESP_LOGW(TAG, "Unsupported record type 0x%02X (%s)",
                      rec_type, get_device_type_name(rec_type));
