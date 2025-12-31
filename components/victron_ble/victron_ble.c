@@ -1,5 +1,4 @@
 #include "victron_ble.h"
-#include "config_storage.h"
 #include "victron_records.h"
 #include "victron_products.h"
 #include <stdbool.h>

@@ -1,316 +1,275 @@
-# VictronSolarDisplayEsp
+# Victron Solar Display ESP32
 
-An ESP32-S3-based solar panel monitor that displays real-time data from a Victron BLE panel using LVGL, and includes a built-in Wi‑Fi AP configuration server to set the AES encryption key via a user-friendly web interface or directly on the device.
+> 🙏 **Fork di [wytr/VictronSolarDisplayEsp](https://github.com/wytr/VictronSolarDisplayEsp/tree/dev)**  
+> Progetto originale di [@wytr](https://github.com/wytr) per ESP32-S3 + LVGL.  
+> Questa versione è stata semplificata e portata su ESP32 standard (Freenove FNK0103S) con driver display diretto.
+>
+> ⚠️ **Nota:** Le chiavi AES di decodifica sono hardcoded nel sorgente per semplicità.  
+> Non è elegante, ma è dannatamente comodo! 😎
 
-**Works with Victron SmartSolar chargers and Victron Battery Monitor devices that broadcast Bluetooth telemetry (SmartShunt, BMV series, etc.).**
+Display compatto per monitoraggio dispositivi Victron Energy via Bluetooth Low Energy (BLE).
 
----
-## Screenshots
+## 📋 Panoramica
 
-Below are screenshots of the device UI, showing both the Live tab and various Settings tab configuration screens:
+Questo progetto implementa un display standalone per visualizzare in tempo reale i dati dei dispositivi Victron Energy:
 
-<p align="center">
-  <img src="docs/images/victrondata.png" alt="Live Tab: Victron Data Overview" width="260" style="margin: 0 12px; display: inline-block;"/>
-  <br/>
-  <b>Live Tab:</b> Shows real-time Victron data including battery voltage, current, load, solar yield, and system state.
-</p>
+- **SmartSolar MPPT** - Regolatore di carica solare
+- **SmartBatterySense** - Sensore di tensione e temperatura batteria  
+- **SmartShunt** - Monitor batteria completo (opzionale, chiave da configurare)
 
-<p align="center">
-  <img src="docs/images/ap-config.png" alt="Settings Tab: AP Config" width="260" style="margin: 0 12px; display: inline-block;"/>
-  <br/>
-  <b>Settings Tab – AP Config:</b> Configure the Wi-Fi AP SSID, password, and enable/disable the access point.
-</p>
+### Caratteristiche
 
-<p align="center">
-  <img src="docs/images/screensaver.png" alt="Settings Tab: Screensaver Settings" width="260" style="margin: 0 12px; display: inline-block;"/>
-  <br/>
-  <b>Settings Tab – Screensaver:</b> Adjust screensaver enable, brightness, and timeout settings.
-</p>
+- ✅ Display diretto ST7796 via SPI (no LVGL)
+- ✅ Scansione BLE passiva continua
+- ✅ Decodifica AES-CTR dei dati Victron
+- ✅ Chiavi AES hardcoded (no WiFi/captive portal)
+- ✅ Layout ottimizzato per 3 dispositivi
+- ✅ Aggiornamento ogni secondo
+- ✅ Footprint memoria ridotto (~200KB app)
 
-<p align="center">
-  <img src="docs/images/mac-and-aes.png" alt="Settings Tab: MAC and AES Key" width="260" style="margin: 0 12px; display: inline-block;"/>
-  <br/>
-  <b>Settings Tab – MAC & AES Key:</b> View and edit the AES key and see the current BLE MAC address. Save or reboot from here.
-</p>
+## 🔧 Hardware Supportato
 
--------
+### Display Target
+- **Freenove ESP32 Display** (FNK0103S)
+- MCU: ESP32-WROOM-32E
+- Display: 4.0" ST7796S 320x480 SPI
+- Touch: XPT2046 (non utilizzato)
+- Flash: 4MB (no PSRAM)
 
-<p align="center">
-  <img src="docs/images/battery-monitor-1-1-0.png" alt="V1.1.0 Battery Monitor Ui" width="260" style="margin: 0 12px; display: inline-block;"/>
-  <br/>
-  <b>NEW Battery Monitor Ui</b>
-</p>
+### Pinout Display
 
----
-## Features
+| Funzione | GPIO |
+|----------|------|
+| MOSI | 13 |
+| MISO | 12 |
+| SCLK | 14 |
+| CS (LCD) | 15 |
+| DC | 2 |
+| Backlight | 27 |
+| RST | - (non connesso) |
 
-- **BLE Decryption & Display**
-  - Scans Victron BLE advertisements, decrypts them with a user-configurable 128-bit AES key, and parses Solar Charger (record type 0x01) and Battery Monitor (record type 0x02) payloads including voltage, current, PV yield, state-of-charge, time-to-go, and auxiliary metrics.
-  - Displays live data on a 320x480 (rotated) LCD using LVGL (Default Dark-Theme).
-  - Shows device state and error codes with icons and text.
-  - Displays the MAC address of the currently connected Victron BLE device.
-  - Adapts the UI copy and layout based on the detected device class so charger-only fields stay hidden when a battery monitor is active.
+## 📡 Dispositivi Victron Supportati
 
-- **On‑Device Configuration**
-  - **Web Interface:** Creates a Wi‑Fi SoftAP (`VictronConfig`) on boot. Hosts a web page (SPIFFS) for entering a new AES key.
-  - **On-Device UI:** The Settings tab allows direct entry and saving of the AES key and displays the current key and BLE MAC address.
-  - All configuration is stored persistently in NVS.
+### 1. SmartSolar MPPT (Record Type 0x01)
 
-- **Persistent Storage**
-  - AES key, Wi-Fi settings, and display brightness are stored in NVS.
-  - Default AES key is used if none is set by the user.
+Regolatori di carica solari della serie SmartSolar.
 
-## Latest Release
+**Dati visualizzati:**
+- Potenza PV (W) - valore principale
+- Corrente di carica (A)
+- Tensione batteria (V)
+- Stato (OFF/BULK/ABSORB/FLOAT/etc.)
+- Yield giornaliero (kWh)
 
-- **1.1.0** adds full Victron Battery Monitor (record type 0x02) support alongside Solar Charger (record type 0x01) telemetry with automatic UI updates.
-- Download prebuilt artifacts (`bootloader.bin`, `partition-table.bin`, `VictronSolarDisplayEsp.bin`, `spiffs.bin`, `flasher_args.json`, `README.md`) from the GitHub Releases page and flash them with the offsets shown below.
-- Use the demo page at [https://demo.nihilanth.de/](https://demo.nihilanth.de/) to flash the firmware directly from Chrome or Microsoft Edge without installing local tooling (except usb driver, youll need that one).
-- Verify Battery Monitor metrics (SOC, TTG, currents) after flashing to confirm your AES key and device pairing.
+### 2. SmartBatterySense (Record Type 0x02, PID 0xA3A4/0xA3A5)
 
----
+Sensore wireless di tensione e temperatura batteria.
 
-## Hardware Requirements
+**Dati visualizzati:**
+- Temperatura batteria (°C) - valore principale
+- Tensione batteria (V)
 
-<p align="center">
-  <img src="docs/images/guition.webp" alt="AES Key Configuration Captive Portal" width="600" style="margin: 0 12px; display: inline-block;"/>
-  <br/>
-  <b>Guition JC3248W535 3.5"</b> ESP32-S3 capacitive touch display module (320×480)
-</p>
----
+⚠️ **Nota:** Il SmartBatterySense usa lo stesso record type del Battery Monitor (0x02) ma trasmette solo tensione e temperatura. Gli altri campi (SOC, corrente, TTG) sono N/A e vengono ignorati.
 
-## Project Structure
+### 3. SmartShunt (Record Type 0x02, PID 0xA389-0xA38B)
+
+Monitor batteria completo con shunt di corrente.
+
+**Dati visualizzati:**
+- SOC (%) - valore principale
+- Tensione batteria (V)
+- Corrente (A)
+- Time To Go (h:mm)
+- Ah consumati
+
+## 🔑 Configurazione Chiavi AES
+
+Le chiavi AES sono hardcoded nel file `components/victron_ble/victron_ble.c`:
+
+```c
+// MPPT SmartSolar
+static uint8_t aes_key_mppt[16] = {
+    0xf2, 0xdc, 0xc3, 0xba, 0x40, 0xed, 0xb8, 0xde,
+    0x7e, 0x07, 0xd7, 0x63, 0x8f, 0x13, 0xf9, 0x71
+};
+
+// SmartBatterySense
+static uint8_t aes_key_batt[16] = {
+    0xb7, 0xab, 0xe1, 0x9c, 0x00, 0x32, 0x40, 0xbe,
+    0x9d, 0xae, 0x89, 0xb8, 0xc3, 0x72, 0xdd, 0x43
+};
+
+// SmartShunt (placeholder - inserire chiave reale)
+static uint8_t aes_key_smartshunt[16] = {
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+};
+static bool has_smartshunt_key = false;  // Impostare a true quando si aggiunge la chiave
+```
+
+### Come ottenere le chiavi
+
+1. Aprire l'app **VictronConnect** sul telefono
+2. Selezionare il dispositivo
+3. Andare in ⚙️ **Impostazioni** → **Info prodotto**
+4. Abilitare **Instant Readout**
+5. Copiare la **Encryption Key** (32 caratteri hex)
+
+### Formato chiave
+
+La chiave nell'app è in formato hex string (es. `f2dcc3ba40edb8de7e07d7638f13f971`).
+
+Convertire in array di byte:
+```
+f2dcc3ba... → 0xf2, 0xdc, 0xc3, 0xba, ...
+```
+
+## 🏗️ Struttura Progetto
 
 ```
 VictronSolarDisplayEsp/
-├─ CMakeLists.txt           # Top-level, includes spiffs partition
-├─ sdkconfig                # IDF configuration
-├─ files/                   # Static web assets (SPIFFS)
-│   ├─ index.html
-│   ├─ style.css
-│   ├─ favicon.ico
-│   ├─ git-icon.svg
-│   └─ js/
-│      └─ jquery-3.7.1.js
-└─ main/                    # ESP-IDF application
-   ├─ CMakeLists.txt        # Component registration
-   ├─ main.c                # app_main, LVGL init, start services
-   ├─ config_server.c       # Wi-Fi AP + HTTP server for config
-   ├─ victron_ble.c         # BLE scanning & AES decryption
-   ├─ ui.c                  # Core LVGL wiring + device view orchestration
-   └─ ui/                   # Modular UI components (views, helpers)
-      ├─ view_solar.c       # Solar charger layout & update logic
-      ├─ view_battery.c     # Battery monitor layout & update logic
-      ├─ view_registry.c    # Factory registry for victron_record_type_t
-      ├─ settings_panel.c   # Settings-tab widgets and event handlers
-      ├─ ui_state.h         # Shared UI state struct
-      └─ ui_format.c        # Common label formatting helpers
-   ├─ display.h/.c          # LCD BSP interaction
-   ├─ config_storage.c      # NVS read/write for AES key, Wi-Fi, brightness
-   └─ ...                   # Other headers & components
+├── main/
+│   ├── main_simple.c      # Entry point e logica UI
+│   ├── simple_display.c   # Driver display ST7796 SPI
+│   ├── simple_display.h   # API display e colori
+│   ├── idf_component.yml  # Dipendenze componenti
+│   └── CMakeLists.txt     # Build configuration
+├── components/
+│   └── victron_ble/
+│       ├── victron_ble.c      # Scanner BLE e decoder AES
+│       ├── victron_ble.h      # API pubblica
+│       ├── victron_products.c # Database nomi prodotti
+│       ├── victron_products.h # Product IDs
+│       └── victron_records.h  # Strutture dati record
+├── docs/
+│   └── extra-manufacturer-data-2022-12-14.txt  # Spec Victron BLE
+├── CMakeLists.txt         # Root build file
+├── partitions.csv         # Partition table
+└── sdkconfig              # ESP-IDF configuration
 ```
 
----
+## 🔨 Compilazione
 
-## Adding Support for a New Victron Device Type
+### Prerequisiti
 
-The UI is now modular: each device view lives in `main/ui/` and is registered by type. To plug in a new Victron payload, follow these steps:
+- ESP-IDF v5.5.x
+- Python 3.11+
 
-1. **Update BLE Parsing**
-   - Extend `victron_ble.c` to decode the new record type into `victron_data_t`. Add any required structs to `victron_ble.h` and assign a unique `victron_record_type_t` enum value.
-
-2. **Implement the View Module**
-   - Create `main/ui/view_<device>.c` with a `ui_device_view_t` implementation (see `view_solar.c` or `view_battery.c` for patterns).
-     - Build LVGL widgets under the provided parent, using the shared styles in `ui_state_t`.
-     - Implement `update()` to format incoming data, reusing helpers from `ui_format.c` where possible.
-     - Provide `show()`/`hide()` for visibility toggling; `destroy()` only if you allocate additional resources.
-
-3. **Register the View**
-   - Add an entry to `main/ui/view_registry.c` mapping your new `victron_record_type_t` to the module’s factory function and display name.
-   - If the device should appear with a specific label in the Settings tab, also update `ui_settings_panel_init()` as needed.
-
-4. **Expose Shared State**
-   - If the view requires additional shared UI state, extend `ui_state_t` in `main/ui/ui_state.h` and initialise it in `ui_init()`.
-
-5. **Test End-to-End**
-   - Build (`idf.py build`) and flash the firmware.
-   - Feed BLE payloads from the new device type (or a mock) and confirm the layout updates correctly without regressions for existing devices.
-
-Following this flow keeps `ui.c` untouched and ensures each device type remains self-contained and swappable via the registry.
-
----
-
-## Build & Flash
-
-1. **Install ESP-IDF v5.4.1** and set up environment:
-
-   ```bash
-   . $HOME/esp/esp-idf/export.sh
-   ```
-
-2. **Prepare static assets**: edit `files/index.html`, `style.css`, add any assets under `files/`.
-
-3. **Full clean & build**:
-
-   ```bash
-   idf.py fullclean build
-   ```
-
-4. **Flash firmware + partitions** (includes SPIFFS image):
-
-   ```bash
-   idf.py flash monitor
-   ```
-
-5. **Interact**:
-
-   - On first boot, the device sets up a SoftAP `VictronConfig` (no password). Connect to it.
-   - **Captive Portal:** When you connect with an Android or iPhone, a popup will automatically appear, directing you to the configuration page (index.html). This makes setup fast and easy—no need to manually enter the IP address!
-   - You can also browse to [http://192.168.4.1/](http://192.168.4.1/) to configure the AES key via web UI.
-   - Alternatively, use the Settings tab on the device to enter and save the AES key.
-   - After saving, the device reboots and begins displaying live BLE data.
-
----
-
-## Framebuffer Screenshot Conversion
-
-You can capture a raw framebuffer screenshot from the device and convert it to a PNG image using the provided Python script.
-
-### 1. Download the raw framebuffer
-
-Use `curl` to fetch the framebuffer from the device's HTTP endpoint (replace the IP if needed):
+### Build
 
 ```bash
-curl http://192.168.4.1/screenshot -o framebuffer.raw
+# Dalla ESP-IDF Command Prompt
+cd VictronSolarDisplayEsp
+idf.py build
 ```
 
-### 2. Convert to PNG
-
-Run the Python script to convert the raw framebuffer to a PNG image:
+### Flash
 
 ```bash
-python convert-framebuffer.py framebuffer.raw output.png
+idf.py -p COM6 flash monitor
 ```
 
----
+### Pulizia build
 
-## Configuration
+```bash
+idf.py fullclean
+```
 
-- **Default AES key (if none set):**  
-  `4B7178E64C828A262CDD5161E3404B7A`
-- **To change the AES key:**
-  - Connect to the AP, enter a new 32-character hex string in the web UI, and click **Save**.
-  - Or, use the Settings tab on the device, enter the new key, and press **Save**.
-- **Other settings:**
-  - Wi-Fi SSID, password, and AP enable/disable can be configured from the Settings tab.
-  - Display brightness is adjustable and persists across reboots.
+## 📺 Layout Display
 
----
+Il display è diviso in 3 sezioni verticali (~160px ciascuna):
 
-## Dependencies
+```
+┌─────────────────────────────────────┐
+│ MPPT SOLAR CHARGER           (--)   │
+│   ████ W          FLOAT             │
+│   ██.█ A          13.32V            │
+│   Today: 0.45 kWh                   │
+├─────────────────────────────────────┤
+│ BATTERY SENSE                (--)   │
+│   ██.█°C                            │
+│   ██.██ V                           │
+│   Battery OK                        │
+├─────────────────────────────────────┤
+│ SMARTSHUNT               (no key)   │
+│   ███ %           13.32V            │
+│   +█.██ A         TTG:--h--m        │
+│   Used: 0.0Ah                       │
+└─────────────────────────────────────┘
+```
 
-- [ESP-IDF v5.4.1](https://docs.espressif.com/projects/esp-idf)
-- [NimBLE](https://github.com/apache/mynewt-nimble)
-- [LVGL](https://lvgl.io/) and Espressif LVGL port
-- AES CTR mode from `esp_aes`
+**Legenda indicatori:**
+- `(--)` = Nessun dato ricevuto
+- `(no key)` = Chiave AES non configurata
 
----
+## 🎨 Schema Colori
 
-## Device UI (Settings Tab)
+| Elemento | Colore | Hex RGB565 |
+|----------|--------|------------|
+| Titoli sezione | Giallo | 0xFFE0 |
+| Valori principali | Verde | 0x07E0 |
+| Tensione | Cyan | 0x07FF |
+| Corrente negativa | Arancione | 0xFD20 |
+| Errori/warning | Rosso | 0xF800 |
+| Testo normale | Bianco | 0xFFFF |
+| Sfondo | Nero | 0x0000 |
 
-- **AP SSID / Password:** Configure Wi-Fi AP settings.
-- **Enable AP:** Checkbox to enable/disable the SoftAP.
-- **Error:** Shows the latest error code from Victron BLE data.
-- **MAC Address:** Shows the MAC address of the currently connected Victron BLE device.
-- **AES Key:** Shows the current AES key. You can enter a new key and press **Save** to update.
-- **Save / Reboot:** Save the AES key or reboot the device.
-- **Brightness:** Adjust the display brightness (persists in NVS).
+## 🔍 Debug
 
----
+### Log seriale
 
-## AES Key Configuration via Captive Portal
+Il firmware produce log dettagliati sulla porta seriale (115200 baud):
 
-On first boot (or after a reset), the device creates a Wi-Fi access point (`VictronConfig`) and launches a captive portal. When you connect with your phone or computer, a popup or redirect will automatically open the configuration page. Here you can securely enter or update the 16-byte AES key (32 hex characters) required for decrypting Victron BLE data.
+```
+I (1234) VICTRON: MPPT: 13.32V 2.1A 28W
+I (2345) victron_ble: === Battery Monitor (PID=0xA3A4) ===
+I (2346) victron_ble: Vbat=13.32V Ibat=-0.001A SOC=102.3% TTG=65535 min
+I (2347) victron_ble: Aux_mode=2 Aux_val=29565 (295.65K = 22.50C)
+```
 
-<p align="center">
-  <img src="docs/images/keyconfig_mobile.png" alt="AES Key Configuration Captive Portal" width="260" style="margin: 0 12px; display: inline-block;"/>
-  <br/>
-  <b>Captive Portal – AES Key Configuration:</b> Enter your 32-character AES key directly from your mobile device or computer. The interface is mobile-friendly and guides you through the process.
-</p>
+### Abilitare debug verbose BLE
 
-After saving the key, the device will reboot and begin displaying live data.
+In `main_simple.c`, dopo `victron_ble_init()`:
+```c
+victron_ble_set_debug(true);
+```
 
----
-## Hardware Build Guide
+## 📝 Note Tecniche
 
-Assembly notes and 3D printed enclosure contributed by [NomadicNico](https://github.com/NomadicNico) – thank you!
+### Protocollo Victron BLE
 
-### Bill of Materials
+I dispositivi Victron trasmettono advertisement BLE con:
+- Vendor ID: `0x02E1` (Victron Energy)
+- Record Type: `0x10` (Product Advertisement)
+- Dati crittografati AES-CTR con nonce a 16 bit
 
-- 3D printed enclosure: [Guition JC3248W535 3.5" Surface Mount Case](https://www.printables.com/model/1442589-guition-jc3248w535-35-surface-mount-case)
-- 4‑pole 1.25 mm connector with pre-crimped leads: [Elechawk PicoBlade-compatible cable set](https://www.amazon.de/dp/B07S18D3RN)
-- DC buck converter:
-  - Adjustable: [TECNOIOT Mini-360 DC-DC Step Down](https://www.amazon.de/-/en/TECNOIOT-Mini360-Mini-360-Adjustable-Converter/dp/B07G4FM6ZW)
-  - Fixed 5 V: [LAOMAO Mini 560 Step Down](https://www.amazon.de/-/en/Converter-Voltage-LAOMAO-Output-Modules/dp/B0B92ZDK6T)
-- Hook-up wire, heat-shrink tubing, and double-sided mounting tape (e.g. 3M VHB)
+### Parsing SmartBatterySense
 
-### Wiring & Assembly
+Il SmartBatterySense usa il record type Battery Monitor (0x02) ma:
+- Product ID: `0xA3A4` o `0xA3A5`
+- Solo `voltage` e `aux_value` (temperatura) sono validi
+- `aux_input` deve essere `2` per temperatura
+- Temperatura in Kelvin × 100: `temp_C = (aux_value / 100.0) - 273.15`
+- Tutti gli altri campi (SOC, current, TTG, consumed) sono N/A
 
-1. **Prepare the connector harness.** Insert red and black pre-crimped leads into the 4-pole plug and trim to ~50 mm.  
-   ![Pre-crimped harness](docs/images/precrimped.png)
+### Selezione chiave automatica
 
-2. **Solder the 5 V output.** Slide heat-shrink onto each lead, solder the red wire to Vout+ and black wire to Vout− on the buck converter, then shrink for strain relief.  
-   ![Buck output soldering](docs/images/soldered-buck.png)
+Il sistema seleziona la chiave AES corretta confrontando il byte `encryptKeyMatch` nell'advertisement con il primo byte di ogni chiave configurata:
+- Se `encryptKeyMatch == aes_key_mppt[0]` → usa chiave MPPT
+- Se `encryptKeyMatch == aes_key_batt[0]` → usa chiave Battery
+- Se `encryptKeyMatch == aes_key_smartshunt[0]` → usa chiave SmartShunt
 
-3. **Set the input wiring.** Add leads to Vin+ and Vin−, insulate with heat-shrink, and (for adjustable modules) dial the output to exactly 5 V before connecting the display.
+## 📜 Licenza
 
-4. **Enclose the converter.** Wrap the buck converter with heat-shrink so no metal is exposed and ready it for mounting.
+MIT License - Vedi file LICENSE
 
-5. **Mount the display.** Install the display into the printed case.  
-   ![Display assembled in printed case](docs/images/display-3d-print.png)
+## � Risorse
 
-6. **Route power and secure the buck.** Plug in the 4-pole connector, position the buck converter centrally over the wall bracket cut-out, and secure it with mounting tape.  
-   ![Buck positioned and connected](docs/images/display-connect-buck.png)
-
-7. **Install the wall bracket.** Fix the bracket in the desired location (example: Hymer instrument panel using the supplied adapter plate).  
-   ![Mounted display in Hymer instrument panel](docs/images/display-mount-hymer.png)
-
-8. **Provide 12 V supply.** Run the Vin leads through the mounting hole and tie into a fused 12 V source.
-
-9. **Attach the display.** Press the display onto the bracket until it clicks. To remove it later, pull firmly or lever the side tabs via the case slots.  
-   ![Finished installation showcase](docs/images/display-mount-hymer-showcase.png)
-
----
-## Victron BLE Manufacturer Data Support (Planned Improvements)
-
-This project currently supports parsing and decrypting Victron BLE advertisements for record types 0x01 (Solar Charger) and 0x02 (Battery Monitor). The Victron BLE protocol, as described in the official documentation (see [`docs/extra-manufacturer-data-2022-12-14.pdf`](docs/extra-manufacturer-data-2022-12-14.pdf)), defines several record types with different encrypted payloads:
-
-| Value | Record Type |
-|-------|--------------|
-| 0x00 | Test record |
-| 0x01 | Solar Charger |
-| 0x02 | Battery Monitor |
-| 0x03 | Inverter |
-| 0x04 | DC/DC converter |
-| 0x05 | SmartLithium |
-| 0x06 | Inverter RS |
-| 0x07 | GX-Device (Record layout TBD) |
-| 0x08 | AC Charger (Record layout TBD) |
-| 0x09 | Smart Battery Protect |
-| 0x0A | (Lynx Smart) BMS |
-| 0x0B | Multi RS |
-| 0x0C | VE.Bus |
-| 0x0D | DC Energy Meter |
-
-**Planned future improvements:**
-- Support for parsing and decrypting all Victron BLE record types (BMS, Inverter, Charger, VE.Direct LoRaWAN, etc.)
-- Dynamic handling of encrypted data length and payload struct based on record type
-- Proper struct definitions and parsing for each decrypted payload type
-- Extensible callback or dispatch mechanism for different record types
-
-If you are interested in contributing or need support for a specific record type, please open an issue or pull request!
+- Documentazione protocollo BLE: Victron Energy
+- Libreria Python victron-ble: [keshavdv/victron-ble](https://github.com/keshavdv/victron-ble)
 
 ---
 
-## License
-
-This project is released under the GNU General Public License v3.0 (GPLv3). See `LICENSE` for details.
+**Versione:** 2.0.0-simple  
+**Data:** Dicembre 2024  
+**Target:** Freenove ESP32 Display (FNK0103S)
