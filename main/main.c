@@ -18,7 +18,7 @@
 
 static const char *TAG = "VICTRON_LVGL_APP";
 #define logSection(section) ESP_LOGI(TAG, "\n\n***** %s *****\n", section)
-#define LVGL_PORT_ROTATION_DEGREE 90
+#define LVGL_PORT_ROTATION_DEGREE 0  // Hardware rotation used instead
 #define REBOOT_INTERVAL_US (12ULL * 60 * 60 * 1000000) // 12 hours in microseconds
 // --- 24h reboot timer callback ---
 static void reboot_timer_cb(void* arg) {
@@ -65,7 +65,8 @@ void setup(void) {
     logSection("Display init");
     bsp_display_cfg_t cfg = {
         .lvgl_port_cfg = ESP_LVGL_PORT_INIT_CONFIG(),
-        .buffer_size   = EXAMPLE_LCD_QSPI_H_RES * EXAMPLE_LCD_QSPI_V_RES,
+        // ESP32 without PSRAM: use small buffer (20 lines instead of full screen)
+        .buffer_size   = EXAMPLE_LCD_QSPI_H_RES * 20,
 #if LVGL_PORT_ROTATION_DEGREE == 90
         .rotate        = LV_DISP_ROT_90,
 #elif LVGL_PORT_ROTATION_DEGREE == 180
@@ -77,7 +78,7 @@ void setup(void) {
 #endif
     };
     bsp_display_start_with_config(&cfg);
-    bsp_display_brightness_set(5);
+    bsp_display_brightness_set(100);  // Set full brightness
 
     /* --- Lock LVGL port and initialize UI --- */
     lvgl_port_lock(0);

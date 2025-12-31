@@ -4,6 +4,8 @@
 
 #define AES_NAMESPACE  "victron"
 #define AES_KEY        "aes_key"
+#define AES_KEY_MPPT   "aes_mppt"
+#define AES_KEY_BATT   "aes_batt"
 #define WIFI_NAMESPACE "wifi"
 #define BRIGHTNESS_NAMESPACE "display"
 #define BRIGHTNESS_KEY       "brightness"
@@ -61,6 +63,56 @@ esp_err_t save_aes_key(const uint8_t key_in[16]) {
     esp_err_t err = nvs_open(AES_NAMESPACE, NVS_READWRITE, &h);
     if (err != ESP_OK) return err;
     err = nvs_set_blob(h, AES_KEY, key_in, 16);
+    if (err == ESP_OK) err = nvs_commit(h);
+    nvs_close(h);
+    return err;
+}
+
+// MPPT specific key
+esp_err_t load_aes_key_mppt(uint8_t key_out[16]) {
+    nvs_handle_t h;
+    esp_err_t err = nvs_open(AES_NAMESPACE, NVS_READONLY, &h);
+    if (err != ESP_OK) return err;
+    size_t required = 16;
+    err = nvs_get_blob(h, AES_KEY_MPPT, key_out, &required);
+    nvs_close(h);
+    // Fall back to legacy key if MPPT-specific not found
+    if (err != ESP_OK) {
+        return load_aes_key(key_out);
+    }
+    return err;
+}
+
+esp_err_t save_aes_key_mppt(const uint8_t key_in[16]) {
+    nvs_handle_t h;
+    esp_err_t err = nvs_open(AES_NAMESPACE, NVS_READWRITE, &h);
+    if (err != ESP_OK) return err;
+    err = nvs_set_blob(h, AES_KEY_MPPT, key_in, 16);
+    if (err == ESP_OK) err = nvs_commit(h);
+    nvs_close(h);
+    return err;
+}
+
+// Battery Monitor specific key
+esp_err_t load_aes_key_battery(uint8_t key_out[16]) {
+    nvs_handle_t h;
+    esp_err_t err = nvs_open(AES_NAMESPACE, NVS_READONLY, &h);
+    if (err != ESP_OK) return err;
+    size_t required = 16;
+    err = nvs_get_blob(h, AES_KEY_BATT, key_out, &required);
+    nvs_close(h);
+    // Fall back to legacy key if battery-specific not found
+    if (err != ESP_OK) {
+        return load_aes_key(key_out);
+    }
+    return err;
+}
+
+esp_err_t save_aes_key_battery(const uint8_t key_in[16]) {
+    nvs_handle_t h;
+    esp_err_t err = nvs_open(AES_NAMESPACE, NVS_READWRITE, &h);
+    if (err != ESP_OK) return err;
+    err = nvs_set_blob(h, AES_KEY_BATT, key_in, 16);
     if (err == ESP_OK) err = nvs_commit(h);
     nvs_close(h);
     return err;

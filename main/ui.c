@@ -59,6 +59,11 @@ void ui_init(void) {
 
     nvs_flash_init();
     load_brightness(&ui->brightness);
+    
+    // Force minimum brightness to 50% for visibility
+    if (ui->brightness < 50) {
+        ui->brightness = 50;
+    }
 
     ui->active_view = NULL;
     ui->current_device_type = VICTRON_BLE_RECORD_TEST;
@@ -143,6 +148,28 @@ void ui_init(void) {
                               &ui->screensaver.brightness,
                               &ui->screensaver.timeout);
 
+    // DEBUG: Force screensaver off and high brightness for testing
+    ui->screensaver.enabled = false;
+    ui->brightness = 100;
+    ui->screensaver.brightness = 50;  // Don't let it go too low
+
+    // ============ SIMPLE COLOR TEST ============
+    // Create a simple red screen to test if display is working
+    lv_obj_t *test_screen = lv_obj_create(lv_scr_act());
+    lv_obj_set_size(test_screen, LV_HOR_RES, LV_VER_RES);
+    lv_obj_set_style_bg_color(test_screen, lv_color_make(255, 0, 0), 0);  // Pure RED
+    lv_obj_set_style_bg_opa(test_screen, LV_OPA_COVER, 0);
+    
+    // Add text to see if it's readable
+    lv_obj_t *test_label = lv_label_create(test_screen);
+    lv_label_set_text(test_label, "RED TEST\n320x480");
+    lv_obj_set_style_text_color(test_label, lv_color_white(), 0);
+    lv_obj_set_style_text_font(test_label, &lv_font_montserrat_24, 0);
+    lv_obj_center(test_label);
+    
+    ESP_LOGI(TAG_UI, "Display test: RED screen with WHITE text");
+    // ============ END TEST ============
+
 #if LV_USE_THEME_DEFAULT
     lv_theme_default_init(NULL,
         lv_palette_main(LV_PALETTE_BLUE),
@@ -183,7 +210,7 @@ void ui_init(void) {
 #if LV_FONT_MONTSERRAT_22
     lv_style_set_text_font(&ui->styles.small, &lv_font_montserrat_22);
 #else
-    lv_style_set_text_font(&ui->styles.title, &lv_font_montserrat_16);
+    lv_style_set_text_font(&ui->styles.small, &lv_font_montserrat_16);
 #endif
     lv_style_set_text_color(&ui->styles.small, lv_color_white());
 

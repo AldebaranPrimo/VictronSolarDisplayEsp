@@ -19,7 +19,7 @@
 #include "esp_netif_types.h"
 #include "dns_server.h" 
 #include <lwip/inet.h>
-#include "lvgl.h"
+// LVGL removed - using simple display
 
 static const char *TAG = "cfg_srv";
 
@@ -234,11 +234,11 @@ static esp_err_t handle_static(httpd_req_t *req) {
     return serve_from_spiffs(req, req->uri);
 }
 
-// Fallback form for POST /save (AES key)
+// Fallback form for POST /save (AES keys - MPPT and Battery)
 static esp_err_t post_save(httpd_req_t *req) {
     ESP_LOGV(TAG, "HTTP POST /save");
     size_t len = req->content_len;
-    if (!len || len > 64) {
+    if (!len || len > 256) {
         httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid length");
         return ESP_FAIL;
     }
@@ -247,21 +247,77 @@ static esp_err_t post_save(httpd_req_t *req) {
     int ret = httpd_req_recv(req, body, len);
     if (ret <= 0) { free(body); return ESP_FAIL; }
     body[ret] = '\0';
-    char *hex = strchr(body, '=');
-    if (!hex || strlen(hex+1) != 32) { free(body); return ESP_FAIL; }
-    hex++;
-    uint8_t key[16];
-    for (int i = 0; i < 16; i++) {
-        char tmp[3] = { hex[i*2], hex[i*2+1], 0 };
-        key[i] = strtol(tmp, NULL, 16);
+    
+    ESP_LOGI(TAG, "POST body: %s", body);
+    
+    // Parse key_mppt=XXXX&key_batt=YYYY
+    char *mppt_start = strstr(body, "key_mppt=");
+    char *batt_start = strstr(body, "key_batt=");
+    
+    int keys_saved = 0;
+    
+    // Parse MPPT key
+    if (mppt_start) {
+        mppt_start += 9; // skip "key_mppt="
+        char *end = strchr(mppt_start, '&');
+        size_t hex_len = end ? (size_t)(end - mppt_start) : strlen(mppt_start);
+        if (hex_len == 32) {
+            uint8_t key[16];
+            for (int i = 0; i < 16; i++) {
+                char tmp[3] = { mppt_start[i*2], mppt_start[i*2+1], 0 };
+                key[i] = strtol(tmp, NULL, 16);
+            }
+            ESP_LOGI(TAG, "MPPT AES key:"); ESP_LOG_BUFFER_HEX(TAG, key, 16);
+            save_aes_key_mppt(key);
+            keys_saved++;
+        }
     }
-    ESP_LOGI(TAG, "Parsed AES key:"); ESP_LOG_BUFFER_HEX(TAG, key, 16);
-    save_aes_key(key);
+    
+    // Parse Battery key
+    if (batt_start) {
+        batt_start += 9; // skip "key_batt="
+        char *end = strchr(batt_start, '&');
+        size_t hex_len = end ? (size_t)(end - batt_start) : strlen(batt_start);
+        if (hex_len == 32) {
+            uint8_t key[16];
+            for (int i = 0; i < 16; i++) {
+                char tmp[3] = { batt_start[i*2], batt_start[i*2+1], 0 };
+                key[i] = strtol(tmp, NULL, 16);
+            }
+            ESP_LOGI(TAG, "Battery AES key:"); ESP_LOG_BUFFER_HEX(TAG, key, 16);
+            save_aes_key_battery(key);
+            keys_saved++;
+        }
+    }
+    
+    // Backward compatibility: parse old format key=XXXX
+    if (keys_saved == 0) {
+        char *hex = strstr(body, "key=");
+        if (hex) {
+            hex += 4;
+            if (strlen(hex) >= 32) {
+                uint8_t key[16];
+                for (int i = 0; i < 16; i++) {
+                    char tmp[3] = { hex[i*2], hex[i*2+1], 0 };
+                    key[i] = strtol(tmp, NULL, 16);
+                }
+                ESP_LOGI(TAG, "Legacy AES key:"); ESP_LOG_BUFFER_HEX(TAG, key, 16);
+                save_aes_key(key);
+                keys_saved++;
+            }
+        }
+    }
+    
     free(body);
-    httpd_resp_set_type(req, "text/html");
-    httpd_resp_send(req, "<h3>Saved. Rebooting...</h3>", HTTPD_RESP_USE_STRLEN);
-    vTaskDelay(pdMS_TO_TICKS(100));
-    esp_restart();
+    
+    if (keys_saved > 0) {
+        httpd_resp_set_type(req, "text/html");
+        httpd_resp_send(req, "<h3>Keys saved. Rebooting...</h3>", HTTPD_RESP_USE_STRLEN);
+        vTaskDelay(pdMS_TO_TICKS(100));
+        esp_restart();
+    } else {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "No valid keys provided");
+    }
     return ESP_OK;
 }
 
@@ -282,19 +338,9 @@ static esp_err_t handle_captive_redirect(httpd_req_t *req) {
     return serve_from_spiffs(req, "/index.html");
 }
 
-// Screenshot handler
+// Screenshot handler (disabled - no LVGL)
 static esp_err_t handle_screenshot(httpd_req_t *req) {
-    lv_disp_t *disp = lv_disp_get_default();
-    if (!disp || !disp->driver || !disp->driver->draw_buf || !disp->driver->draw_buf->buf1) {
-        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "No framebuffer");
-        return ESP_FAIL;
-    }
-    size_t width = disp->driver->hor_res;
-    size_t height = disp->driver->ver_res;
-    size_t bpp = sizeof(lv_color_t); // usually 2 (RGB565)
-    size_t buf_size = width * height * bpp;
-    httpd_resp_set_type(req, "application/octet-stream");
-    httpd_resp_send(req, (const char*)disp->driver->draw_buf->buf1, buf_size);
+    httpd_resp_send_err(req, HTTPD_501_METHOD_NOT_IMPLEMENTED, "Screenshot not available");
     return ESP_OK;
 }
 

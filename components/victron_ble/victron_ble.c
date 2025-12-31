@@ -25,7 +25,22 @@ static bool victron_debug_enabled = false;
 #define NA_U10          0x3FF
 #define NA_U22          0x3FFFFF
 
-static uint8_t aes_key[16];
+// Hardcoded AES keys
+static uint8_t aes_key_mppt[16] = {
+    0xf2, 0xdc, 0xc3, 0xba, 0x40, 0xed, 0xb8, 0xde,
+    0x7e, 0x07, 0xd7, 0x63, 0x8f, 0x13, 0xf9, 0x71
+};
+static uint8_t aes_key_batt[16] = {
+    0xb7, 0xab, 0xe1, 0x9c, 0x00, 0x32, 0x40, 0xbe,
+    0x9d, 0xae, 0x89, 0xb8, 0xc3, 0x72, 0xdd, 0x43
+};
+// TODO: Add SmartShunt key when available
+static uint8_t aes_key_smartshunt[16] = {
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+};
+static bool has_smartshunt_key = false;  // Set to true when key is added
+static uint8_t aes_key[16]; // Working key for current decrypt
 
 typedef enum {
     VICTRON_MANUFACTURER_RECORD_PRODUCT_ADVERTISEMENT = 0x10,
@@ -62,31 +77,18 @@ static inline int32_t sign_extend(uint32_t value, uint8_t bits)
 
 void victron_ble_init(void)
 {
-    ESP_LOGI(TAG, "Initializing NVS for Victron BLE");
+    ESP_LOGI(TAG, "Initializing Victron BLE with hardcoded keys");
 
-    // Keep any pre-registered data_cb
+    // NVS init for BLE stack
     esp_err_t ret = nvs_flash_init();
     if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
-        ESP_LOGW(TAG, "NVS partition issue, erasing and reinitializing");
         ESP_ERROR_CHECK(nvs_flash_erase());
         ret = nvs_flash_init();
     }
     ESP_ERROR_CHECK(ret);
 
-    // Load AES key from NVS or fallback to default
-    if (load_aes_key(aes_key) == ESP_OK) {
-        ESP_LOGI(TAG, "Loaded AES key from NVS");
-    } else {
-        ESP_LOGW(TAG, "No user AES key found in NVS, using default");
-        const uint8_t default_key[16] = {
-            0x4B,0x71,0x78,0xE6, 0x4C,0x82,0x8A,0x26,
-            0x2C,0xDD,0x51,0x61, 0xE3,0x40,0x4B,0x7A
-        };
-        memcpy(aes_key, default_key, sizeof(aes_key));
-    }
-
-    ESP_LOGI(TAG, "Using AES key:");
-    ESP_LOG_BUFFER_HEX(TAG, aes_key, sizeof(aes_key));
+    ESP_LOGI(TAG, "MPPT key[0]=0x%02X, Battery key[0]=0x%02X", 
+             aes_key_mppt[0], aes_key_batt[0]);
 
     ESP_LOGI(TAG, "Initializing NimBLE stack");
     nimble_port_init();
@@ -204,9 +206,17 @@ static int ble_gap_event_handler(struct ble_gap_event *event, void *arg)
     if (victron_debug_enabled)
         ESP_LOG_BUFFER_HEX_LEVEL(TAG, fields.mfg_data, fields.mfg_data_len, ESP_LOG_INFO);
 
-    if (mdata->encryptKeyMatch != aes_key[0]) {
-        ESP_LOGW(TAG, "Key mismatch! Device key[0]=0x%02X, ours=0x%02X - skipping decrypt",
-                 mdata->encryptKeyMatch, aes_key[0]);
+    // Select correct key based on encryptKeyMatch byte
+    if (mdata->encryptKeyMatch == aes_key_mppt[0]) {
+        memcpy(aes_key, aes_key_mppt, 16);
+    } else if (mdata->encryptKeyMatch == aes_key_batt[0]) {
+        memcpy(aes_key, aes_key_batt, 16);
+    } else if (has_smartshunt_key && mdata->encryptKeyMatch == aes_key_smartshunt[0]) {
+        memcpy(aes_key, aes_key_smartshunt, 16);
+    } else {
+        ESP_LOGW(TAG, "Unknown key[0]=0x%02X (MPPT=0x%02X, Batt=0x%02X, SS=0x%02X)",
+                 mdata->encryptKeyMatch, aes_key_mppt[0], aes_key_batt[0], 
+                 has_smartshunt_key ? aes_key_smartshunt[0] : 0);
         return 0;
     }
 
@@ -307,11 +317,11 @@ static int ble_gap_event_handler(struct ble_gap_event *event, void *arg)
 
             float current_A   = current_bits / 1000.0f;
 
-            ESP_LOGI(TAG, "=== Battery Monitor ===");
+            ESP_LOGI(TAG, "=== Battery Monitor (PID=0x%04X) ===", product_id);
             ESP_LOGI(TAG, "Vbat=%.2fV Ibat=%.3fA SOC=%.1f%% TTG=%u min",
                      voltage_raw / 100.0f, current_A, soc_bits / 10.0f, ttg_raw);
-            ESP_LOGI(TAG, "Aux=%u (%.2fV), Alarm=0x%04X",
-                     aux_input, aux_raw / 100.0f, alarm_raw);
+            ESP_LOGI(TAG, "Aux_mode=%u Aux_val=%u (%.2fK = %.2fC), Alarm=0x%04X",
+                     aux_input, aux_raw, aux_raw / 100.0f, (aux_raw / 100.0f) - 273.15f, alarm_raw);
 
             if (data_cb) {
                 victron_data_t parsed = {

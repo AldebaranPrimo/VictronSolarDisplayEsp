@@ -187,8 +187,8 @@ lv_disp_t *lvgl_port_add_disp(const lvgl_port_display_cfg_t *disp_cfg)
     assert(disp_cfg->hres > 0);
     assert(disp_cfg->vres > 0);
 
-    /* Display context */
-    lvgl_port_display_ctx_t *disp_ctx = malloc(sizeof(lvgl_port_display_ctx_t));
+    /* Display context - use calloc to zero-initialize all fields */
+    lvgl_port_display_ctx_t *disp_ctx = calloc(1, sizeof(lvgl_port_display_ctx_t));
     ESP_GOTO_ON_FALSE(disp_ctx, ESP_ERR_NO_MEM, err, TAG, "Not enough memory for display context allocation!");
     disp_ctx->io_handle = disp_cfg->io_handle;
     disp_ctx->panel_handle = disp_cfg->panel_handle;
@@ -239,8 +239,8 @@ lv_disp_t *lvgl_port_add_disp(const lvgl_port_display_cfg_t *disp_cfg)
 
     disp_ctx->disp_drv.draw_buf = disp_buf;
     disp_ctx->disp_drv.user_data = disp_ctx;
-    /* Force full_fresh */
-    disp_ctx->disp_drv.full_refresh = 1;
+    /* Disable full_refresh for ESP32 without PSRAM (small buffer) */
+    disp_ctx->disp_drv.full_refresh = 0;
 
 #if LVGL_PORT_HANDLE_FLUSH_READY
     /* Register done callback */

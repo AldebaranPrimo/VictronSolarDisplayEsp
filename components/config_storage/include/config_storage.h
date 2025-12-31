@@ -13,9 +13,15 @@
 esp_err_t load_brightness(uint8_t *brightness_out);
 esp_err_t save_brightness(uint8_t brightness);
 
-// AES key handling
+// AES key handling (legacy - single key)
 esp_err_t load_aes_key(uint8_t key_out[16]);
 esp_err_t save_aes_key(const uint8_t key_in[16]);
+
+// AES key handling (per device type)
+esp_err_t load_aes_key_mppt(uint8_t key_out[16]);
+esp_err_t save_aes_key_mppt(const uint8_t key_in[16]);
+esp_err_t load_aes_key_battery(uint8_t key_out[16]);
+esp_err_t save_aes_key_battery(const uint8_t key_in[16]);
 
 // Screensaver settings
 esp_err_t load_screensaver_settings(bool *enabled, uint8_t *brightness, uint16_t *timeout);
