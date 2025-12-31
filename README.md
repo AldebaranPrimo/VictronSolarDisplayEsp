@@ -7,6 +7,12 @@
 > ⚠️ **Note:** AES decryption keys are hardcoded in the source for simplicity.  
 > Not elegant, but damn convenient! 😎
 
+### Why this fork?
+
+I didn't have the hardware required by the original project, and honestly, I didn't need fancy graphics either 🙂 So I decided to create a version for the hardware I had on hand, tailored to my specific needs for monitoring the solar system in my camper van.
+
+---
+
 Compact display for real-time monitoring of Victron Energy devices via Bluetooth Low Energy (BLE).
 
 ![Display Screenshot](docs/images/display_screenshot.jpg)
