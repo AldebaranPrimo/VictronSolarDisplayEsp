@@ -2,6 +2,7 @@
 set(SIMPLE_SOURCES
     "main_simple.c"
     "simple_display.c"
+    "ui_bars.c"
 )
 
 idf_component_register(

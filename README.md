@@ -159,6 +159,8 @@ VictronSolarDisplayEsp/
 │   ├── main_simple.c      # Entry point and UI logic
 │   ├── simple_display.c   # ST7796 SPI display driver
 │   ├── simple_display.h   # Display API and colors
+│   ├── ui_bars.c          # Progress bar visualization
+│   ├── ui_bars.h          # Bar drawing API
 │   ├── idf_component.yml  # Component dependencies
 │   └── CMakeLists.txt     # Build configuration
 ├── components/
@@ -204,23 +206,27 @@ idf.py fullclean
 
 ## 📺 Display Layout
 
-The display is divided into 3 vertical sections (~160px each):
+The display is divided into 3 vertical sections (~160px each) with **color-coded progress bars** for quick visual feedback:
 
 ```
 ┌─────────────────────────────────────┐
 │ MPPT SOLAR CHARGER           (--)   │
 │   ████ W          FLOAT             │
+│ ▰▰▰▰▰▰░░░░░░░░░░░░░░░░░░░░░░░░░  │ ← Power bar (0-450W)
 │   ██.█ A          13.32V            │
 │   Today: 0.45 kWh                   │
 ├─────────────────────────────────────┤
 │ BATTERY SENSE                (--)   │
 │   ██.█°C                            │
+│ ▰▰▰▰▰▰░░░░░░░░░░░░░░░░░░░░░░░░░  │ ← Temp bar (-10 to +50°C)
 │   ██.██ V                           │
 │   Battery OK                        │
 ├─────────────────────────────────────┤
 │ SMARTSHUNT               (no key)   │
 │   ███ %           13.32V            │
+│ ▰▰▰▰▰▰░░░░░░░░░░░░░░░░░░░░░░░░░  │ ← SOC bar (0-100%)
 │   +█.██ A         TTG:--h--m        │
+│ ▰▰▰▰░░░░░░░░░░░░░░░░░░░░░░░░░░  │ ← Current bar (-100 to +50A)
 │   Used: 0.0Ah                       │
 └─────────────────────────────────────┘
 ```
@@ -229,17 +235,68 @@ The display is divided into 3 vertical sections (~160px each):
 - `(--)` = No data received
 - `(no key)` = AES key not configured
 
-## 🎨 Color Scheme
+### Color Coding System
+
+The bars use **Discrete Zones** with color thresholds for instant visual understanding:
+
+#### MPPT Power Bar (0-450W)
+| Range | Color | Meaning |
+|-------|-------|---------|
+| 0-50W | Gray | Minimal charging |
+| 50-200W | Green | Good charging |
+| 200-300W | Yellow | High charging |
+| 300-450W | Red | Maximum charging |
+
+#### Battery Temperature Bar (-10°C to +50°C)
+| Range | Color | Meaning |
+|-------|-------|---------|
+| -10 to 0°C | Red | Too cold ⚠️ |
+| 0 to 10°C | Yellow | Cool |
+| 10 to 30°C | Green | Optimal |
+| 30 to 40°C | Yellow | Warm |
+| >40°C | Red | Too hot ⚠️ |
+
+#### SmartShunt SOC Bar (0-100%)
+| Range | Color | Meaning |
+|-------|-------|---------|
+| 0-20% | Red | Critical ⚠️ |
+| 20-50% | Yellow | Low |
+| 50-80% | Green | OK |
+| 80-100% | Green | Full |
+
+#### SmartShunt Current Bar (-100A to +50A)
+| Range | Color | Meaning |
+|-------|-------|---------|
+| -100 to -30A | Violet | Very high discharge ⚠️⚠️ |
+| -30 to -10A | Red | High discharge ⚠️ |
+| -10 to -1A | Yellow | Light discharge |
+| -1 to +10A | White | Idle / Slow charging |
+| +10 to +30A | Green | Normal charging |
+| >+30A | Yellow | Fast charging |
+
+## 🎨 Visual Features
+
+### Color Scheme
 
 | Element | Color | Hex RGB565 |
 |---------|-------|------------|
 | Section titles | Yellow | 0xFFE0 |
-| Main values | Green | 0x07E0 |
-| Voltage | Cyan | 0x07FF |
-| Negative current | Orange | 0xFD20 |
-| Errors/warnings | Red | 0xF800 |
+| Optimal values | Green | 0x07E0 |
+| Voltage readings | Cyan | 0x07FF |
+| Warnings | Yellow | 0xFFE0 |
+| Critical alerts | Red | 0xF800 |
 | Normal text | White | 0xFFFF |
 | Background | Black | 0x0000 |
+| Disabled/Idle | Gray | 0x8410 |
+
+### Progress Bars
+
+All three devices display **color-coded progress bars** that instantly show the status of key metrics:
+
+1. **MPPT Power Bar** - Real-time visualization of charging power (0-450W)
+2. **Battery Temperature Bar** - Temperature monitor with safe operating range (-10°C to +50°C)
+3. **SmartShunt SOC Bar** - Battery level at a glance (0-100%)
+4. **SmartShunt Current Bar** - Discharge/charge flow visualization (-100A to +50A)
 
 ## 🔍 Debugging
 
@@ -310,6 +367,6 @@ MIT License - See LICENSE file
 
 ---
 
-**Version:** 2.1.0-simple  
+**Version:** 2.2.0-simple  
 **Date:** January 2026  
 **Target:** Freenove ESP32 Display (FNK0103S)

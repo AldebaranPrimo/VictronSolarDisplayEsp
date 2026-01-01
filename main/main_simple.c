@@ -12,6 +12,7 @@
 #include "simple_display.h"
 #include "victron_ble.h"
 #include "victron_records.h"
+#include "ui_bars.h"
 
 static const char *TAG = "VICTRON";
 
@@ -124,6 +125,10 @@ static void draw_ui(void) {
         display_string(140, y+8, buf, COLOR_WHITE, COLOR_BLACK);
         y += 40;
         
+        // Power bar (0-450W)
+        draw_mppt_power_bar(5, y, pv_power);
+        y += 20;
+        
         // Battery Current - BIG (main charging value)
         snprintf(buf, sizeof(buf), "%.1fA ", current);
         display_string_large(5, y, buf, COLOR_CYAN, COLOR_BLACK);
@@ -166,17 +171,18 @@ static void draw_ui(void) {
         
         // TEMPERATURE - BIG (main value)
         snprintf(buf, sizeof(buf), "%.1f C ", temp_c);
-        // Color based on temperature
-        uint16_t temp_color = COLOR_GREEN;
-        if (temp_c < 5) temp_color = COLOR_CYAN;      // Cold
-        else if (temp_c > 40) temp_color = COLOR_RED;  // Hot
-        else if (temp_c > 30) temp_color = COLOR_ORANGE; // Warm
+        // Color based on temperature from bar function
+        uint16_t temp_color = get_battery_temp_color(temp_c);
         display_string_large(5, y, buf, has_battery_data ? temp_color : COLOR_WHITE, COLOR_BLACK);
         
         // Degree symbol workaround
         display_string(115, y, "o", has_battery_data ? temp_color : COLOR_WHITE, COLOR_BLACK);
         
         y += 45;
+        
+        // Temperature bar (-10°C to +50°C)
+        draw_battery_temp_bar(5, y, has_battery_data ? temp_c : 0.0f);
+        y += 20;
         
         // VOLTAGE - medium size
         snprintf(buf, sizeof(buf), "%.2fV     ", voltage);
@@ -212,9 +218,7 @@ static void draw_ui(void) {
         
         // SOC - BIG
         snprintf(buf, sizeof(buf), "%.0f%% ", soc);
-        uint16_t soc_color = COLOR_GREEN;
-        if (soc < 20) soc_color = COLOR_RED;
-        else if (soc < 50) soc_color = COLOR_YELLOW;
+        uint16_t soc_color = get_soc_color(soc);
         display_string_large(5, y, buf, has_smartshunt_data ? soc_color : COLOR_WHITE, COLOR_BLACK);
         
         // Voltage on right
@@ -222,9 +226,14 @@ static void draw_ui(void) {
         display_string(140, y+8, buf, COLOR_CYAN, COLOR_BLACK);
         y += 40;
         
+        // SOC Bar (0-100%)
+        draw_smartshunt_soc_bar(5, y, has_smartshunt_data ? soc : 0.0f);
+        y += 20;
+        
         // Current - medium
         snprintf(buf, sizeof(buf), "%+.2fA   ", curr);
-        display_string_large(5, y, buf, curr >= 0 ? COLOR_GREEN : COLOR_ORANGE, COLOR_BLACK);
+        uint16_t curr_color = get_current_color(curr);
+        display_string_large(5, y, buf, has_smartshunt_data ? curr_color : COLOR_WHITE, COLOR_BLACK);
         
         // TTG on right
         if (ttg != 0xFFFF && ttg > 0) {
@@ -234,6 +243,10 @@ static void draw_ui(void) {
         }
         display_string(180, y+8, buf, COLOR_WHITE, COLOR_BLACK);
         y += 40;
+        
+        // Current Bar (-100A to +50A)
+        draw_smartshunt_current_bar(5, y, has_smartshunt_data ? curr : 0.0f);
+        y += 20;
         
         // Consumed
         snprintf(buf, sizeof(buf), "Used: %.1fAh         ", consumed);
