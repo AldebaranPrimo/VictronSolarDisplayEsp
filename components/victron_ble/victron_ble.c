@@ -24,21 +24,26 @@ static bool victron_debug_enabled = false;
 #define NA_U10          0x3FF
 #define NA_U22          0x3FFFFF
 
-// Hardcoded AES keys
+// Hardcoded AES keys with MAC addresses for identification
+// MAC address in reverse order (LSB first as received from BLE)
+static uint8_t mac_mppt[6] = { 0xb5, 0x7d, 0xb4, 0x39, 0x56, 0xc1 };  // c1:56:39:b4:7d:b5
 static uint8_t aes_key_mppt[16] = {
     0xf2, 0xdc, 0xc3, 0xba, 0x40, 0xed, 0xb8, 0xde,
     0x7e, 0x07, 0xd7, 0x63, 0x8f, 0x13, 0xf9, 0x71
 };
+
+static uint8_t mac_batt[6] = { 0x2b, 0x9e, 0xbd, 0x91, 0xb6, 0xc1 };  // c1:b6:91:bd:9e:2b
 static uint8_t aes_key_batt[16] = {
     0xb7, 0xab, 0xe1, 0x9c, 0x00, 0x32, 0x40, 0xbe,
     0x9d, 0xae, 0x89, 0xb8, 0xc3, 0x72, 0xdd, 0x43
 };
-// TODO: Add SmartShunt key when available
+
+static uint8_t mac_smartshunt[6] = { 0x2e, 0x1b, 0x0c, 0xcf, 0x3c, 0xf9 };  // f9:3c:cf:0c:1b:2e
 static uint8_t aes_key_smartshunt[16] = {
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+    0x4c, 0x1e, 0x3c, 0xcd, 0x3d, 0x89, 0x2d, 0xb1,
+    0x3d, 0x7a, 0x43, 0x74, 0x0b, 0x7f, 0x10, 0x21
 };
-static bool has_smartshunt_key = false;  // Set to true when key is added
+
 static uint8_t aes_key[16]; // Working key for current decrypt
 
 typedef enum {
@@ -200,22 +205,30 @@ static int ble_gap_event_handler(struct ble_gap_event *event, void *arg)
     VDBG("Vendor ID: 0x%04X, Record: 0x%02X (%s)",
          mdata->vendorID, mdata->victronRecordType,
          get_device_type_name(mdata->victronRecordType));
-    VDBG("Nonce: 0x%04X, KeyMatch: 0x%02X (local[0]=0x%02X)",
-         mdata->nonceDataCounter, mdata->encryptKeyMatch, aes_key[0]);
+    VDBG("Nonce: 0x%04X, KeyMatch: 0x%02X",
+         mdata->nonceDataCounter, mdata->encryptKeyMatch);
     if (victron_debug_enabled)
         ESP_LOG_BUFFER_HEX_LEVEL(TAG, fields.mfg_data, fields.mfg_data_len, ESP_LOG_INFO);
 
-    // Select correct key based on encryptKeyMatch byte
-    if (mdata->encryptKeyMatch == aes_key_mppt[0]) {
+    // Select correct key based on MAC address
+    const uint8_t *mac = event->disc.addr.val;
+    victron_device_id_t device_id = VICTRON_DEVICE_UNKNOWN;
+    
+    if (memcmp(mac, mac_mppt, 6) == 0) {
         memcpy(aes_key, aes_key_mppt, 16);
-    } else if (mdata->encryptKeyMatch == aes_key_batt[0]) {
+        device_id = VICTRON_DEVICE_MPPT;
+        ESP_LOGD(TAG, "Using MPPT key");
+    } else if (memcmp(mac, mac_batt, 6) == 0) {
         memcpy(aes_key, aes_key_batt, 16);
-    } else if (has_smartshunt_key && mdata->encryptKeyMatch == aes_key_smartshunt[0]) {
+        device_id = VICTRON_DEVICE_BATTERY_SENSE;
+        ESP_LOGD(TAG, "Using BatterySense key");
+    } else if (memcmp(mac, mac_smartshunt, 6) == 0) {
         memcpy(aes_key, aes_key_smartshunt, 16);
+        device_id = VICTRON_DEVICE_SMARTSHUNT;
+        ESP_LOGD(TAG, "Using SmartShunt key");
     } else {
-        ESP_LOGW(TAG, "Unknown key[0]=0x%02X (MPPT=0x%02X, Batt=0x%02X, SS=0x%02X)",
-                 mdata->encryptKeyMatch, aes_key_mppt[0], aes_key_batt[0], 
-                 has_smartshunt_key ? aes_key_smartshunt[0] : 0);
+        // Unknown device - skip
+        VDBG("Unknown MAC, skipping");
         return 0;
     }
 
@@ -283,7 +296,8 @@ static int ble_gap_event_handler(struct ble_gap_event *event, void *arg)
             if (data_cb) {
                 victron_data_t parsed = {
                     .type = VICTRON_BLE_RECORD_SOLAR_CHARGER,
-                    .product_id = product_id
+                    .product_id = product_id,
+                    .device_id = device_id
                 };
                 parsed.record.solar.device_state = r->device_state;
                 parsed.record.solar.charger_error = r->charger_error;
@@ -325,7 +339,8 @@ static int ble_gap_event_handler(struct ble_gap_event *event, void *arg)
             if (data_cb) {
                 victron_data_t parsed = {
                     .type = VICTRON_BLE_RECORD_BATTERY_MONITOR,
-                    .product_id = product_id
+                    .product_id = product_id,
+                    .device_id = device_id
                 };
                 parsed.record.battery.time_to_go_minutes = ttg_raw;
                 parsed.record.battery.battery_voltage_centi = voltage_raw;
@@ -369,7 +384,8 @@ static int ble_gap_event_handler(struct ble_gap_event *event, void *arg)
             if (data_cb) {
                 victron_data_t parsed = {
                     .type = VICTRON_BLE_RECORD_INVERTER,
-                    .product_id = product_id
+                    .product_id = product_id,
+                    .device_id = device_id
                 };
                 parsed.record.inverter.device_state = device_state;
                 parsed.record.inverter.alarm_reason = alarm_reason;
@@ -409,7 +425,8 @@ static int ble_gap_event_handler(struct ble_gap_event *event, void *arg)
             if (data_cb) {
                 victron_data_t parsed = {
                     .type = VICTRON_BLE_RECORD_DCDC_CONVERTER,
-                    .product_id = product_id
+                    .product_id = product_id,
+                    .device_id = device_id
                 };
                 parsed.record.dcdc.device_state = device_state;
                 parsed.record.dcdc.charger_error = charger_error;
@@ -453,7 +470,8 @@ static int ble_gap_event_handler(struct ble_gap_event *event, void *arg)
             if (data_cb) {
                 victron_data_t parsed = {
                     .type = VICTRON_BLE_RECORD_SMART_LITHIUM,
-                    .product_id = product_id
+                    .product_id = product_id,
+                    .device_id = device_id
                 };
                 parsed.record.lithium.bms_flags = bms_flags;
                 parsed.record.lithium.error_flags = error_flags;

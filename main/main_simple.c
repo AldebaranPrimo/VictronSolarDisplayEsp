@@ -45,19 +45,13 @@ static const char* get_state_string(uint8_t state) {
     }
 }
 
-// SmartShunt product IDs
-#define IS_SMARTSHUNT(pid) ((pid) >= 0xA389 && (pid) <= 0xA38B)
-
-// SmartBatterySense product IDs
-#define IS_BATTERY_SENSE(pid) ((pid) == 0xA3A4 || (pid) == 0xA3A5)
-
 // Victron data callback
 static void victron_data_callback(const victron_data_t *data) {
     if (!data || !data_mutex) return;
     
     xSemaphoreTake(data_mutex, portMAX_DELAY);
     
-    if (data->type == VICTRON_BLE_RECORD_SOLAR_CHARGER) {
+    if (data->device_id == VICTRON_DEVICE_MPPT) {
         memcpy(&current_solar, data, sizeof(victron_data_t));
         has_solar_data = true;
         ESP_LOGI(TAG, "MPPT: %.2fV %.1fA %dW", 
@@ -65,34 +59,24 @@ static void victron_data_callback(const victron_data_t *data) {
             data->record.solar.battery_current_deci / 10.0f,
             data->record.solar.pv_power_w);
     }
-    else if (data->type == VICTRON_BLE_RECORD_BATTERY_MONITOR) {
-        // Distinguish by product_id
-        if (IS_SMARTSHUNT(data->product_id)) {
-            memcpy(&current_smartshunt, data, sizeof(victron_data_t));
-            has_smartshunt_data = true;
-            ESP_LOGI(TAG, "SmartShunt: %.2fV %.1f%% %.2fA", 
-                data->record.battery.battery_voltage_centi / 100.0f,
-                data->record.battery.soc_deci_percent / 10.0f,
-                data->record.battery.battery_current_milli / 1000.0f);
-        } else if (IS_BATTERY_SENSE(data->product_id)) {
-            // SmartBatterySense - only voltage and temperature
-            memcpy(&current_battery, data, sizeof(victron_data_t));
-            has_battery_data = true;
-            // Temperature is in aux_value when aux_input == 2 (Kelvin * 100)
-            float temp_c = (data->record.battery.aux_value / 100.0f) - 273.15f;
-            ESP_LOGI(TAG, "BatterySense: %.2fV %.1f°C (aux_mode=%d)", 
-                data->record.battery.battery_voltage_centi / 100.0f,
-                temp_c,
-                data->record.battery.aux_input);
-        } else {
-            // Generic BMV
-            memcpy(&current_battery, data, sizeof(victron_data_t));
-            has_battery_data = true;
-            ESP_LOGI(TAG, "BMV: %.2fV %.1f%% %.2fA", 
-                data->record.battery.battery_voltage_centi / 100.0f,
-                data->record.battery.soc_deci_percent / 10.0f,
-                data->record.battery.battery_current_milli / 1000.0f);
-        }
+    else if (data->device_id == VICTRON_DEVICE_SMARTSHUNT) {
+        memcpy(&current_smartshunt, data, sizeof(victron_data_t));
+        has_smartshunt_data = true;
+        ESP_LOGI(TAG, "SmartShunt: %.2fV %.1f%% %.2fA", 
+            data->record.battery.battery_voltage_centi / 100.0f,
+            data->record.battery.soc_deci_percent / 10.0f,
+            data->record.battery.battery_current_milli / 1000.0f);
+    }
+    else if (data->device_id == VICTRON_DEVICE_BATTERY_SENSE) {
+        // SmartBatterySense - only voltage and temperature
+        memcpy(&current_battery, data, sizeof(victron_data_t));
+        has_battery_data = true;
+        // Temperature is in aux_value when aux_input == 2 (Kelvin * 100)
+        float temp_c = (data->record.battery.aux_value / 100.0f) - 273.15f;
+        ESP_LOGI(TAG, "BatterySense: %.2fV %.1f°C (aux_mode=%d)", 
+            data->record.battery.battery_voltage_centi / 100.0f,
+            temp_c,
+            data->record.battery.aux_input);
     }
     
     xSemaphoreGive(data_mutex);
@@ -213,7 +197,7 @@ static void draw_ui(void) {
     // === SECTION 3: SMARTSHUNT (~165px) ===
     display_string(5, Y_SS_TITLE, "SMARTSHUNT", COLOR_YELLOW, COLOR_BLACK);
     if (!has_smartshunt_data) {
-        display_string(180, Y_SS_TITLE, "(no key)", COLOR_RED, COLOR_BLACK);
+        display_string(180, Y_SS_TITLE, "  (--)  ", COLOR_RED, COLOR_BLACK);
     } else {
         display_string(180, Y_SS_TITLE, "        ", COLOR_BLACK, COLOR_BLACK);
     }

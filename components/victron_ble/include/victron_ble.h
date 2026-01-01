@@ -14,10 +14,19 @@ extern "C" {
 // Unified Victron BLE data container
 // -----------------------------------------------------------------------------
 
+// Device identification (based on MAC address)
+typedef enum {
+    VICTRON_DEVICE_UNKNOWN = 0,
+    VICTRON_DEVICE_MPPT,
+    VICTRON_DEVICE_BATTERY_SENSE,
+    VICTRON_DEVICE_SMARTSHUNT
+} victron_device_id_t;
+
 typedef struct {
-    victron_record_type_t type;  // record type (e.g., SOLAR_CHARGER, BATTERY_MONITOR)
+    victron_record_type_t type;       // record type (e.g., SOLAR_CHARGER, BATTERY_MONITOR)
     uint16_t              product_id; // Victron product identifier
-    victron_record_t      record; // parsed record data (union of all device types)
+    victron_device_id_t   device_id;  // Which device sent this (based on MAC)
+    victron_record_t      record;     // parsed record data (union of all device types)
 } victron_data_t;
 
 // -----------------------------------------------------------------------------

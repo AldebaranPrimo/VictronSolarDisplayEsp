@@ -30,6 +30,7 @@ This project implements a standalone display to show real-time data from Victron
 - ✅ Direct ST7796 display via SPI (no LVGL)
 - ✅ Continuous passive BLE scanning
 - ✅ AES-CTR decryption of Victron data
+- ✅ **MAC-based device identification** (reliable key selection)
 - ✅ Hardcoded AES keys (no WiFi/captive portal)
 - ✅ Optimized layout for 3 devices
 - ✅ Updates every second
@@ -107,13 +108,31 @@ static uint8_t aes_key_batt[16] = {
     0x9d, 0xae, 0x89, 0xb8, 0xc3, 0x72, 0xdd, 0x43
 };
 
-// SmartShunt (placeholder - insert real key)
+// SmartShunt
 static uint8_t aes_key_smartshunt[16] = {
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+    0x4c, 0x1e, 0x3c, 0xcd, 0x3d, 0x89, 0x2d, 0xb1,
+    0x3d, 0x7a, 0x43, 0x74, 0x0b, 0x7f, 0x10, 0x21
 };
-static bool has_smartshunt_key = false;  // Set to true when adding the key
 ```
+
+### Device MAC Addresses
+
+In addition to AES keys, devices are identified by their **MAC addresses** (configured in `victron_ble.c`):
+
+```c
+// MAC addresses (BLE byte order - reversed)
+static const uint8_t mac_mppt[6] = { 0xb5, 0x7d, 0xb4, 0x39, 0x56, 0xc1 };       // c1:56:39:b4:7d:b5
+static const uint8_t mac_batt[6] = { 0x2b, 0x9e, 0xbd, 0x91, 0xb6, 0xc1 };       // c1:b6:91:bd:9e:2b
+static const uint8_t mac_smartshunt[6] = { 0x2e, 0x1b, 0x0c, 0xcf, 0x3c, 0xf9 }; // f9:3c:cf:0c:1b:2e
+```
+
+⚠️ **Important:** MAC addresses in BLE are transmitted in **reverse byte order**. If your device shows MAC `f9:3c:cf:0c:1b:2e`, configure it as `{ 0x2e, 0x1b, 0x0c, 0xcf, 0x3c, 0xf9 }`.
+
+### How to find the MAC address
+
+1. Use the **VictronConnect** app → Device Info shows the MAC
+2. Or use a BLE scanner app (nRF Connect, LightBlue, etc.)
+3. Or check the serial log when the device is detected
 
 ### How to get the keys
 
@@ -145,7 +164,7 @@ VictronSolarDisplayEsp/
 ├── components/
 │   └── victron_ble/
 │       ├── victron_ble.c      # BLE scanner and AES decoder
-│       ├── victron_ble.h      # Public API
+│       ├── victron_ble.h      # Public API + device_id enum
 │       ├── victron_products.c # Product name database
 │       ├── victron_products.h # Product IDs
 │       └── victron_records.h  # Record data structures
@@ -260,12 +279,25 @@ SmartBatterySense uses Battery Monitor record type (0x02) but:
 - Temperature in Kelvin × 100: `temp_C = (aux_value / 100.0) - 273.15`
 - All other fields (SOC, current, TTG, consumed) are N/A
 
-### Automatic key selection
+### MAC-based Device Identification
 
-The system selects the correct AES key by comparing the `encryptKeyMatch` byte in the advertisement with the first byte of each configured key:
-- If `encryptKeyMatch == aes_key_mppt[0]` → use MPPT key
-- If `encryptKeyMatch == aes_key_batt[0]` → use Battery key
-- If `encryptKeyMatch == aes_key_smartshunt[0]` → use SmartShunt key
+The system identifies devices by their **MAC address** rather than the advertisement data. This provides reliable device identification:
+
+```c
+// When a BLE advertisement is received:
+if (memcmp(mac, mac_mppt, 6) == 0) {
+    // Use MPPT AES key, set device_id = VICTRON_DEVICE_MPPT
+} else if (memcmp(mac, mac_batt, 6) == 0) {
+    // Use BatterySense AES key, set device_id = VICTRON_DEVICE_BATTERY_SENSE
+} else if (memcmp(mac, mac_smartshunt, 6) == 0) {
+    // Use SmartShunt AES key, set device_id = VICTRON_DEVICE_SMARTSHUNT
+}
+```
+
+This approach is more reliable than using `encryptKeyMatch` byte because:
+- MAC addresses are unique per device
+- No ambiguity when multiple devices share similar key prefixes
+- Explicit mapping between device and decryption key
 
 ## 📜 License
 
@@ -278,6 +310,6 @@ MIT License - See LICENSE file
 
 ---
 
-**Version:** 2.0.0-simple  
-**Date:** December 2024  
+**Version:** 2.1.0-simple  
+**Date:** January 2026  
 **Target:** Freenove ESP32 Display (FNK0103S)
