@@ -353,8 +353,8 @@ esp_err_t display_init(void) {
     
     // Memory Access Control - Landscape mode, BGR
     spi_write_cmd(CMD_MADCTL);
-    // MV swaps X/Y; MX keeps origin at top-left for this board orientation
-    spi_write_data_byte(MADCTL_MV | MADCTL_MX | MADCTL_BGR);
+    // MV swaps X/Y for landscape orientation, BGR for color order
+    spi_write_data_byte(MADCTL_MV | MADCTL_BGR);
     
     // Pixel format: 16bit/pixel (RGB565)
     spi_write_cmd(CMD_COLMOD);
