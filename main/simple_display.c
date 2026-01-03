@@ -351,9 +351,10 @@ esp_err_t display_init(void) {
     spi_write_cmd(CMD_SLPOUT);
     vTaskDelay(pdMS_TO_TICKS(120));
     
-    // Memory Access Control - Portrait mode, BGR, Mirror X to fix text orientation
+    // Memory Access Control - Landscape mode, BGR
     spi_write_cmd(CMD_MADCTL);
-    spi_write_data_byte(MADCTL_MX | MADCTL_BGR);  // 0x48 = MX + BGR
+    // MV swaps X/Y; MX keeps origin at top-left for this board orientation
+    spi_write_data_byte(MADCTL_MV | MADCTL_MX | MADCTL_BGR);
     
     // Pixel format: 16bit/pixel (RGB565)
     spi_write_cmd(CMD_COLMOD);

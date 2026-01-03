@@ -108,21 +108,22 @@ static void draw_progress_bar(int x, int y, int width, int height, float filled_
 /**
  * Draw MPPT Power bar (0-450W)
  */
-void draw_mppt_power_bar(int x, int y, int power_w) {
+void draw_mppt_power_bar(int x, int y, int width, int power_w) {
     // Clamp power to max
     if (power_w > 450) power_w = 450;
     if (power_w < 0) power_w = 0;
-    
+
     float percent = (power_w / 450.0f) * 100.0f;
     uint16_t color = get_mppt_color(power_w);
-    
-    draw_progress_bar(x, y, 300, 12, percent, color);
+
+    if (width < 10) width = 10;
+    draw_progress_bar(x, y, width, 12, percent, color);
 }
 
 /**
  * Draw Battery Sense Temperature bar (-10°C to +50°C)
  */
-void draw_battery_temp_bar(int x, int y, float temp_c) {
+void draw_battery_temp_bar(int x, int y, int width, float temp_c) {
     // Clamp temperature
     if (temp_c < -10) temp_c = -10;
     if (temp_c > 50) temp_c = 50;
@@ -131,26 +132,28 @@ void draw_battery_temp_bar(int x, int y, float temp_c) {
     float percent = ((temp_c + 10) / 60.0f) * 100.0f;
     uint16_t color = get_battery_temp_color(temp_c);
     
-    draw_progress_bar(x, y, 300, 12, percent, color);
+    if (width < 10) width = 10;
+    draw_progress_bar(x, y, width, 12, percent, color);
 }
 
 /**
  * Draw SmartShunt SOC bar (0-100%)
  */
-void draw_smartshunt_soc_bar(int x, int y, float soc_percent) {
+void draw_smartshunt_soc_bar(int x, int y, int width, float soc_percent) {
     // Clamp SOC
     if (soc_percent < 0) soc_percent = 0;
     if (soc_percent > 100) soc_percent = 100;
     
     uint16_t color = get_soc_color(soc_percent);
     
-    draw_progress_bar(x, y, 300, 12, soc_percent, color);
+    if (width < 10) width = 10;
+    draw_progress_bar(x, y, width, 12, soc_percent, color);
 }
 
 /**
  * Draw SmartShunt Current bar (-100A to +50A)
  */
-void draw_smartshunt_current_bar(int x, int y, float current_a) {
+void draw_smartshunt_current_bar(int x, int y, int width, float current_a) {
     // Clamp current
     if (current_a < -100) current_a = -100;
     if (current_a > 50) current_a = 50;
@@ -159,5 +162,6 @@ void draw_smartshunt_current_bar(int x, int y, float current_a) {
     float percent = ((current_a + 100) / 150.0f) * 100.0f;
     uint16_t color = get_current_color(current_a);
     
-    draw_progress_bar(x, y, 300, 12, percent, color);
+    if (width < 10) width = 10;
+    draw_progress_bar(x, y, width, 12, percent, color);
 }

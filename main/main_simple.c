@@ -86,173 +86,165 @@ static void victron_data_callback(const victron_data_t *data) {
 // Draw the main UI - 3 sections layout (no header/footer, maximized space)
 static void draw_ui(void) {
     char buf[64];
-    
-    // Full screen layout: 320x480, each section ~160px
-    // No header, no footer - maximum usable area
-    #define Y_MPPT_TITLE   5
-    #define Y_MPPT_DATA   22
-    #define Y_LINE1      150
-    #define Y_BSENSE_TITLE 155
-    #define Y_BSENSE_DATA  172
-    #define Y_LINE2      305
-    #define Y_SS_TITLE   310
-    #define Y_SS_DATA    327
-    
+
+    // Landscape layout: 4 quadranti (2x2)
+    const int half_w = DISPLAY_WIDTH / 2;   // 240
+    const int half_h = DISPLAY_HEIGHT / 2;  // 160
+    const int pad = 8;
+    const int inner_w = half_w - pad * 2;
+    const int bar_w = inner_w - 4;
+
     xSemaphoreTake(data_mutex, portMAX_DELAY);
     
-    // === SECTION 1: MPPT SOLAR CHARGER (~150px) ===
-    display_string(5, Y_MPPT_TITLE, "MPPT SOLAR CHARGER", COLOR_YELLOW, COLOR_BLACK);
-    if (!has_solar_data) {
-        display_string(245, Y_MPPT_TITLE, "(--)", COLOR_RED, COLOR_BLACK);
-    } else {
-        display_string(245, Y_MPPT_TITLE, "    ", COLOR_BLACK, COLOR_BLACK);
-    }
-    
-    int y = Y_MPPT_DATA;
+    // === Q1: MPPT SOLAR CHARGER (top-left) ===
+    int base_x = 0;
+    int base_y = 0;
+    display_fill_rect(base_x, base_y, half_w, half_h, COLOR_BLACK);
+    display_string(base_x + pad, base_y + pad, "MPPT SOLAR CHARGER", COLOR_YELLOW, COLOR_BLACK);
+    display_string(base_x + half_w - pad - 24, base_y + pad, has_solar_data ? "    " : "(--)", has_solar_data ? COLOR_BLACK : COLOR_RED, COLOR_BLACK);
+
+    int y = base_y + pad + 18;
     {
         int pv_power = has_solar_data ? current_solar.record.solar.pv_power_w : 0;
         const char *state = has_solar_data ? get_state_string(current_solar.record.solar.device_state) : "OFF";
         float voltage = has_solar_data ? current_solar.record.solar.battery_voltage_centi / 100.0f : 0.0f;
         float current = has_solar_data ? current_solar.record.solar.battery_current_deci / 10.0f : 0.0f;
         float yield = has_solar_data ? current_solar.record.solar.yield_today_centikwh / 100.0f : 0.0f;
-        
+
         // PV Power - BIG (main value)
         snprintf(buf, sizeof(buf), "%4dW", pv_power);
-        display_string_large(5, y, buf, COLOR_GREEN, COLOR_BLACK);
-        
+        display_string_large(base_x + pad, y, buf, COLOR_GREEN, COLOR_BLACK);
+
         // State on right
         snprintf(buf, sizeof(buf), "%-8s", state);
-        display_string(140, y+8, buf, COLOR_WHITE, COLOR_BLACK);
-        y += 40;
-        
+        display_string(base_x + pad + inner_w - 70, y + 8, buf, COLOR_WHITE, COLOR_BLACK);
+        y += 34;
+
         // Power bar (0-450W)
-        draw_mppt_power_bar(5, y, pv_power);
-        y += 20;
-        
+        draw_mppt_power_bar(base_x + pad, y, bar_w, pv_power);
+        y += 14;
+
         // Battery Current - BIG (main charging value)
         snprintf(buf, sizeof(buf), "%.1fA ", current);
-        display_string_large(5, y, buf, COLOR_CYAN, COLOR_BLACK);
-        
+        display_string_large(base_x + pad, y, buf, COLOR_CYAN, COLOR_BLACK);
+
         // Battery Voltage - smaller on right
         snprintf(buf, sizeof(buf), "%.2fV", voltage);
-        display_string(160, y+8, buf, COLOR_WHITE, COLOR_BLACK);
-        y += 40;
-        
+        display_string(base_x + pad + inner_w - 70, y + 8, buf, COLOR_WHITE, COLOR_BLACK);
+        y += 34;
+
         // Yield Today
         snprintf(buf, sizeof(buf), "Today: %.2f kWh    ", yield);
-        display_string(5, y, buf, COLOR_WHITE, COLOR_BLACK);
+        display_string(base_x + pad, y, buf, COLOR_WHITE, COLOR_BLACK);
     }
     
-    // Separator line
-    display_fill_rect(5, Y_LINE1, 310, 2, COLOR_WHITE);
-    
-    // === SECTION 2: SMART BATTERY SENSE (~150px) ===
-    // Shows only TEMPERATURE (big) and VOLTAGE (small)
-    display_string(5, Y_BSENSE_TITLE, "BATTERY SENSE", COLOR_YELLOW, COLOR_BLACK);
-    if (!has_battery_data) {
-        display_string(200, Y_BSENSE_TITLE, "(--)", COLOR_RED, COLOR_BLACK);
-    } else {
-        display_string(200, Y_BSENSE_TITLE, "    ", COLOR_BLACK, COLOR_BLACK);
-    }
-    
-    y = Y_BSENSE_DATA;
-    {
-        // SmartBatterySense only has temperature and voltage
-        // Temperature is in aux_value (Kelvin * 100) when aux_input == 2
-        float voltage = has_battery_data ? current_battery.record.battery.battery_voltage_centi / 100.0f : 0.0f;
-        float temp_k = has_battery_data ? current_battery.record.battery.aux_value / 100.0f : 273.15f;
-        float temp_c = temp_k - 273.15f;
-        
-        // Check if temperature is valid (aux_input should be 2 for temp)
-        bool temp_valid = has_battery_data && (current_battery.record.battery.aux_input == 2);
-        if (!temp_valid && has_battery_data) {
-            temp_c = 0.0f; // Fallback
-        }
-        
-        // TEMPERATURE - BIG (main value)
-        snprintf(buf, sizeof(buf), "%.1f C ", temp_c);
-        // Color based on temperature from bar function
-        uint16_t temp_color = get_battery_temp_color(temp_c);
-        display_string_large(5, y, buf, has_battery_data ? temp_color : COLOR_WHITE, COLOR_BLACK);
-        
-        // Degree symbol workaround
-        display_string(115, y, "o", has_battery_data ? temp_color : COLOR_WHITE, COLOR_BLACK);
-        
-        y += 45;
-        
-        // Temperature bar (-10°C to +50°C)
-        draw_battery_temp_bar(5, y, has_battery_data ? temp_c : 0.0f);
-        y += 20;
-        
-        // VOLTAGE - medium size
-        snprintf(buf, sizeof(buf), "%.2fV     ", voltage);
-        display_string_large(5, y, buf, COLOR_CYAN, COLOR_BLACK);
-        y += 45;
-        
-        // Status line
-        if (has_battery_data) {
-            display_string(5, y, "Battery OK              ", COLOR_GREEN, COLOR_BLACK);
-        } else {
-            display_string(5, y, "No data                 ", COLOR_ORANGE, COLOR_BLACK);
-        }
-    }
-    
-    // Separator line  
-    display_fill_rect(5, Y_LINE2, 310, 2, COLOR_WHITE);
-    
-    // === SECTION 3: SMARTSHUNT (~165px) ===
-    display_string(5, Y_SS_TITLE, "SMARTSHUNT", COLOR_YELLOW, COLOR_BLACK);
-    if (!has_smartshunt_data) {
-        display_string(180, Y_SS_TITLE, "  (--)  ", COLOR_RED, COLOR_BLACK);
-    } else {
-        display_string(180, Y_SS_TITLE, "        ", COLOR_BLACK, COLOR_BLACK);
-    }
-    
-    y = Y_SS_DATA;
+    // === Q2: SMARTSHUNT (top-right) ===
+    base_x = half_w;
+    base_y = 0;
+    display_fill_rect(base_x, base_y, half_w, half_h, COLOR_BLACK);
+    display_string(base_x + pad, base_y + pad, "SMARTSHUNT", COLOR_YELLOW, COLOR_BLACK);
+    display_string(base_x + half_w - pad - 32, base_y + pad, has_smartshunt_data ? "      " : "(--)", has_smartshunt_data ? COLOR_BLACK : COLOR_RED, COLOR_BLACK);
+
+    y = base_y + pad + 18;
     {
         float soc = has_smartshunt_data ? current_smartshunt.record.battery.soc_deci_percent / 10.0f : 0.0f;
         float voltage = has_smartshunt_data ? current_smartshunt.record.battery.battery_voltage_centi / 100.0f : 0.0f;
         float curr = has_smartshunt_data ? current_smartshunt.record.battery.battery_current_milli / 1000.0f : 0.0f;
         uint16_t ttg = has_smartshunt_data ? current_smartshunt.record.battery.time_to_go_minutes : 0;
         float consumed = has_smartshunt_data ? current_smartshunt.record.battery.consumed_ah_deci / -10.0f : 0.0f;
-        
+
         // SOC - BIG
         snprintf(buf, sizeof(buf), "%.0f%% ", soc);
         uint16_t soc_color = get_soc_color(soc);
-        display_string_large(5, y, buf, has_smartshunt_data ? soc_color : COLOR_WHITE, COLOR_BLACK);
-        
+        display_string_large(base_x + pad, y, buf, has_smartshunt_data ? soc_color : COLOR_WHITE, COLOR_BLACK);
+
         // Voltage on right
         snprintf(buf, sizeof(buf), "%.2fV ", voltage);
-        display_string(140, y+8, buf, COLOR_CYAN, COLOR_BLACK);
-        y += 40;
-        
+        display_string(base_x + pad + inner_w - 70, y + 8, buf, COLOR_CYAN, COLOR_BLACK);
+        y += 34;
+
         // SOC Bar (0-100%)
-        draw_smartshunt_soc_bar(5, y, has_smartshunt_data ? soc : 0.0f);
-        y += 20;
-        
+        draw_smartshunt_soc_bar(base_x + pad, y, bar_w, has_smartshunt_data ? soc : 0.0f);
+        y += 14;
+
         // Current - medium
         snprintf(buf, sizeof(buf), "%+.2fA   ", curr);
         uint16_t curr_color = get_current_color(curr);
-        display_string_large(5, y, buf, has_smartshunt_data ? curr_color : COLOR_WHITE, COLOR_BLACK);
-        
+        display_string_large(base_x + pad, y, buf, has_smartshunt_data ? curr_color : COLOR_WHITE, COLOR_BLACK);
+
         // TTG on right
         if (ttg != 0xFFFF && ttg > 0) {
             snprintf(buf, sizeof(buf), "TTG:%dh%02dm ", ttg/60, ttg%60);
         } else {
             snprintf(buf, sizeof(buf), "TTG:---    ");
         }
-        display_string(180, y+8, buf, COLOR_WHITE, COLOR_BLACK);
-        y += 40;
-        
+        display_string(base_x + pad + inner_w - 90, y + 8, buf, COLOR_WHITE, COLOR_BLACK);
+        y += 34;
+
         // Current Bar (-100A to +50A)
-        draw_smartshunt_current_bar(5, y, has_smartshunt_data ? curr : 0.0f);
-        y += 20;
-        
+        draw_smartshunt_current_bar(base_x + pad, y, bar_w, has_smartshunt_data ? curr : 0.0f);
+        y += 14;
+
         // Consumed
         snprintf(buf, sizeof(buf), "Used: %.1fAh         ", consumed);
-        display_string(5, y, buf, COLOR_WHITE, COLOR_BLACK);
+        display_string(base_x + pad, y, buf, COLOR_WHITE, COLOR_BLACK);
     }
     
+    // === Q3: BATTERY SENSE (bottom-left) ===
+    base_x = 0;
+    base_y = half_h;
+    display_fill_rect(base_x, base_y, half_w, half_h, COLOR_BLACK);
+    display_string(base_x + pad, base_y + pad, "BATTERY SENSE", COLOR_YELLOW, COLOR_BLACK);
+    display_string(base_x + half_w - pad - 24, base_y + pad, has_battery_data ? "    " : "(--)", has_battery_data ? COLOR_BLACK : COLOR_RED, COLOR_BLACK);
+
+    y = base_y + pad + 18;
+    {
+        float voltage = has_battery_data ? current_battery.record.battery.battery_voltage_centi / 100.0f : 0.0f;
+        float temp_k = has_battery_data ? current_battery.record.battery.aux_value / 100.0f : 273.15f;
+        float temp_c = temp_k - 273.15f;
+
+        bool temp_valid = has_battery_data && (current_battery.record.battery.aux_input == 2);
+        if (!temp_valid && has_battery_data) {
+            temp_c = 0.0f; // Fallback
+        }
+
+        // TEMPERATURE - BIG (main value)
+        snprintf(buf, sizeof(buf), "%.1f C ", temp_c);
+        uint16_t temp_color = get_battery_temp_color(temp_c);
+        uint16_t temp_fg = has_battery_data ? temp_color : COLOR_WHITE;
+        display_string_large(base_x + pad, y, buf, temp_fg, COLOR_BLACK);
+        // Degree symbol workaround
+        display_string(base_x + pad + 110, y, "o", temp_fg, COLOR_BLACK);
+        y += 34;
+
+        // Temperature bar (-10C to +50C)
+        draw_battery_temp_bar(base_x + pad, y, bar_w, has_battery_data ? temp_c : 0.0f);
+        y += 14;
+
+        // VOLTAGE - medium size
+        snprintf(buf, sizeof(buf), "%.2fV     ", voltage);
+        display_string_large(base_x + pad, y, buf, COLOR_CYAN, COLOR_BLACK);
+        y += 34;
+
+        // Status line
+        if (has_battery_data) {
+            display_string(base_x + pad, y, "Battery OK              ", COLOR_GREEN, COLOR_BLACK);
+        } else {
+            display_string(base_x + pad, y, "No data                 ", COLOR_ORANGE, COLOR_BLACK);
+        }
+    }
+
+    // === Q4: Placeholder (bottom-right) ===
+    base_x = half_w;
+    base_y = half_h;
+    display_fill_rect(base_x, base_y, half_w, half_h, COLOR_BLACK);
+    // Draw a simple border and label
+    display_fill_rect(base_x, base_y, half_w, 2, COLOR_WHITE);
+    display_fill_rect(base_x, base_y + half_h - 2, half_w, 2, COLOR_WHITE);
+    display_fill_rect(base_x, base_y, 2, half_h, COLOR_WHITE);
+    display_fill_rect(base_x + half_w - 2, base_y, 2, half_h, COLOR_WHITE);
+    display_string(base_x + pad, base_y + pad, "Reserved", COLOR_YELLOW, COLOR_BLACK);
+
     xSemaphoreGive(data_mutex);
 }
 

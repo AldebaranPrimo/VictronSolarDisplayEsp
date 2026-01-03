@@ -18,9 +18,9 @@
 #define COLOR_YELLOW  0xFFE0
 #define COLOR_ORANGE  0xFD20
 
-// Display dimensions (native portrait)
-#define DISPLAY_WIDTH  320
-#define DISPLAY_HEIGHT 480
+// Display dimensions (logical after rotation) - landscape
+#define DISPLAY_WIDTH  480
+#define DISPLAY_HEIGHT 320
 
 /**
  * @brief Initialize the display
