@@ -23,7 +23,8 @@ This project implements a standalone display to show real-time data from Victron
 
 - **SmartSolar MPPT** - Solar charge controller
 - **SmartBatterySense** - Battery voltage and temperature sensor  
-- **SmartShunt** - Full battery monitor (optional, key needs configuration)
+- **SmartShunt** - Full battery monitor
+- **Blue Smart IP22 Charger** - AC battery charger (12V/15A)
 
 ### Features
 
@@ -32,7 +33,9 @@ This project implements a standalone display to show real-time data from Victron
 - ✅ AES-CTR decryption of Victron data
 - ✅ **MAC-based device identification** (reliable key selection)
 - ✅ Hardcoded AES keys (no WiFi/captive portal)
-- ✅ Optimized layout for 3 devices
+- ✅ **4-quadrant landscape layout** (480x320)
+- ✅ **LED-style segmented progress bars** (20 segments with gaps)
+- ✅ **Intelligent caching** (flicker-free updates)
 - ✅ Updates every second
 - ✅ Reduced memory footprint (~200KB app)
 
@@ -91,6 +94,17 @@ Full battery monitor with current shunt.
 - Time To Go (h:mm)
 - Consumed Ah
 
+### 4. Blue Smart IP22 Charger (Record Type 0x08)
+
+AC battery charger (12V/15A, 230V input).
+
+**Displayed data:**
+- Charger state (OFF/BULK/ABSORB/FLOAT/STORAGE)
+- Battery voltage (V)
+- Charge current (A)
+
+⚠️ **Note:** Requires firmware v3.61+ and "Instant readout via Bluetooth" enabled in VictronConnect settings.
+
 ## 🔑 AES Key Configuration
 
 AES keys are hardcoded in `components/victron_ble/victron_ble.c`:
@@ -113,6 +127,12 @@ static uint8_t aes_key_smartshunt[16] = {
     0x4c, 0x1e, 0x3c, 0xcd, 0x3d, 0x89, 0x2d, 0xb1,
     0x3d, 0x7a, 0x43, 0x74, 0x0b, 0x7f, 0x10, 0x21
 };
+
+// Blue Smart IP22 Charger
+static uint8_t aes_key_charger[16] = {
+    0x19, 0xef, 0xd0, 0xcf, 0x51, 0xbe, 0xfc, 0x3e,
+    0x2e, 0x4a, 0x2b, 0x85, 0x84, 0x14, 0x4f, 0x2a
+};
 ```
 
 ### Device MAC Addresses
@@ -124,6 +144,7 @@ In addition to AES keys, devices are identified by their **MAC addresses** (conf
 static const uint8_t mac_mppt[6] = { 0xb5, 0x7d, 0xb4, 0x39, 0x56, 0xc1 };       // c1:56:39:b4:7d:b5
 static const uint8_t mac_batt[6] = { 0x2b, 0x9e, 0xbd, 0x91, 0xb6, 0xc1 };       // c1:b6:91:bd:9e:2b
 static const uint8_t mac_smartshunt[6] = { 0x2e, 0x1b, 0x0c, 0xcf, 0x3c, 0xf9 }; // f9:3c:cf:0c:1b:2e
+static const uint8_t mac_charger[6] = { 0x00, 0x7b, 0xca, 0xfc, 0xa6, 0xe9 };    // e9:a6:fc:ca:7b:00
 ```
 
 ⚠️ **Important:** MAC addresses in BLE are transmitted in **reverse byte order**. If your device shows MAC `f9:3c:cf:0c:1b:2e`, configure it as `{ 0x2e, 0x1b, 0x0c, 0xcf, 0x3c, 0xf9 }`.
@@ -206,34 +227,46 @@ idf.py fullclean
 
 ## 📺 Display Layout
 
-The display is divided into 3 vertical sections (~160px each) with **color-coded progress bars** for quick visual feedback:
+The display uses a **4-quadrant landscape layout** (480x320 pixels, 2x2 grid) with intelligent caching for flicker-free updates:
 
 ```
-┌─────────────────────────────────────┐
-│ MPPT SOLAR CHARGER           (--)   │
-│   ████ W          FLOAT             │
-│ ▰▰▰▰▰▰░░░░░░░░░░░░░░░░░░░░░░░░░  │ ← Power bar (0-450W)
-│   ██.█ A          13.32V            │
-│   Today: 0.45 kWh                   │
-├─────────────────────────────────────┤
-│ BATTERY SENSE                (--)   │
-│   ██.█°C                            │
-│ ▰▰▰▰▰▰░░░░░░░░░░░░░░░░░░░░░░░░░  │ ← Temp bar (-10 to +50°C)
-│   ██.██ V                           │
-│   Battery OK                        │
-├─────────────────────────────────────┤
-│ SMARTSHUNT               (no key)   │
-│   ███ %           13.32V            │
-│ ▰▰▰▰▰▰░░░░░░░░░░░░░░░░░░░░░░░░░  │ ← SOC bar (0-100%)
-│   +█.██ A         TTG:--h--m        │
-│ ▰▰▰▰░░░░░░░░░░░░░░░░░░░░░░░░░░  │ ← Current bar (-100 to +50A)
-│   Used: 0.0Ah                       │
-└─────────────────────────────────────┘
+┌──────────────────────┬──────────────────────┐
+│ MPPT SOLAR CHARGER   │ SMARTSHUNT           │
+│   284W      BULK     │   87%        13.45V  │
+│ ▰▰▰▰▰▰▰▰▰▰▰░░░░░░░░ │ ▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰░░ │ ← LED bars
+│   13.45V    2.1A     │   +2.5A   TTG:12h45m │
+│   Today: 1.23 kWh    │ ▰▰▰▰▰▰▰░░░░░░░░░░░░ │
+│                      │   Used: 5.4Ah        │
+├──────────────────────┼──────────────────────┤
+│ BATTERY SENSE        │ AC CHARGER IP22      │
+│   22.5°C             │   ABSORB             │
+│ ▰▰▰▰▰▰▰▰▰▰▰▰░░░░░░░ │   13.65V             │
+│   13.44V             │   12.5A              │
+│   Battery OK         │   Charging OK        │
+└──────────────────────┴──────────────────────┘
 ```
 
-**Status indicators:**
-- `(--)` = No data received
-- `(no key)` = AES key not configured
+**Layout features:**
+- 240x160 pixels per quadrant
+- Light gray cross separator between sections
+- Color-coded LED-style progress bars (20 segments, 2px gaps)
+- Only changed values are redrawn (eliminates flashing)
+- Status indicators: `(--)` for no data
+
+### LED-Style Progress Bars
+
+All bars use **20 discrete segments** with **2px gaps** for a modern LED indicator appearance:
+
+- **Filled segments**: Full color based on value range
+- **Empty segments**: Dark gray (#2104)
+- **Smooth transitions**: Colors change based on value thresholds
+
+#### Visual Design
+```
+Filled:  ▰▰▰▰▰▰▰▰▰▰░░░░░░░░░░
+Empty:   ░░░░░░░░░░░░░░░░░░░░
+         └─ 2px gap between each segment
+```
 
 ### Color Coding System
 
@@ -291,32 +324,49 @@ The bars use **Discrete Zones** with color thresholds for instant visual underst
 
 ### Progress Bars
 
-All three devices display **color-coded progress bars** that instantly show the status of key metrics:
+All four quadrants display **LED-style segmented progress bars** (20 segments with 2px gaps) that instantly show the status of key metrics:
 
-1. **MPPT Power Bar** - Real-time visualization of charging power (0-450W)
-2. **Battery Temperature Bar** - Temperature monitor with safe operating range (-10°C to +50°C)
-3. **SmartShunt SOC Bar** - Battery level at a glance (0-100%)
-4. **SmartShunt Current Bar** - Discharge/charge flow visualization (-100A to +50A)
+1. **Q1 - MPPT Power Bar** - Real-time visualization of charging power (0-450W)
+2. **Q2 - SmartShunt SOC Bar** - Battery level at a glance (0-100%)
+3. **Q2 - SmartShunt Current Bar** - Discharge/charge flow visualization (-100A to +50A)
+4. **Q3 - Battery Temperature Bar** - Temperature monitor with safe operating range (-10°C to +50°C)
+
+## 🎯 Performance Optimizations
+
+### Intelligent Caching System
+
+The firmware uses **value caching with change detection** to eliminate screen flashing:
+
+- Each displayed value is cached (voltage, current, SOC, etc.)
+- Only changed values trigger SPI updates
+- Static elements (headers, separators) drawn once at startup
+- Result: **Perfectly smooth updates** with no visible flicker
+
+### Memory Efficiency
+
+- Direct SPI drawing (no framebuffer)
+- No LVGL library overhead
+- ~200KB application size
+- Minimal RAM usage for ESP32 without PSRAM
 
 ## 🔍 Debugging
 
 ### Serial log
 
-The firmware produces detailed logs on the serial port (115200 baud):
+The firmware produces minimal logs on the serial port (115200 baud) - only AC charger and unknown devices:
 
 ```
-I (1234) VICTRON: MPPT: 13.32V 2.1A 28W
-I (2345) victron_ble: === Battery Monitor (PID=0xA3A4) ===
-I (2346) victron_ble: Vbat=13.32V Ibat=-0.001A SOC=102.3% TTG=65535 min
-I (2347) victron_ble: Aux_mode=2 Aux_val=29565 (295.65K = 22.50C)
+I (35183) victron_ble: AC CHARGER detected - MAC: E9:A6:FC:CA:7B:00
+I (35183) victron_ble: === AC Charger IP22 ===
+I (35184) victron_ble: State=5 Error=0x00 Vbat1=13.65V Ibat1=12.5A Temp=25C
+I (35185) VICTRON: AC Charger: 13.65V 12.5A State:5
 ```
+
+Other devices (MPPT, SmartShunt, BatterySense) run silently to keep the log clean.
 
 ### Enable verbose BLE debug
 
-In `main_simple.c`, after `victron_ble_init()`:
-```c
-victron_ble_set_debug(true);
-```
+For debugging purposes, you can re-enable all device logs by modifying `victron_ble.c` to add ESP_LOGI calls in each record parsing section.
 
 ## 📝 Technical Notes
 
@@ -348,6 +398,8 @@ if (memcmp(mac, mac_mppt, 6) == 0) {
     // Use BatterySense AES key, set device_id = VICTRON_DEVICE_BATTERY_SENSE
 } else if (memcmp(mac, mac_smartshunt, 6) == 0) {
     // Use SmartShunt AES key, set device_id = VICTRON_DEVICE_SMARTSHUNT
+} else if (memcmp(mac, mac_charger, 6) == 0) {
+    // Use AC Charger AES key, set device_id = VICTRON_DEVICE_AC_CHARGER
 }
 ```
 
@@ -355,6 +407,31 @@ This approach is more reliable than using `encryptKeyMatch` byte because:
 - MAC addresses are unique per device
 - No ambiguity when multiple devices share similar key prefixes
 - Explicit mapping between device and decryption key
+- Supports up to 4 devices simultaneously
+
+## 🔧 Display Configuration
+
+### Orientation Fix
+
+The display is configured for **landscape mode** with correct MADCTL register settings:
+
+```c
+#define MADCTL_MV  0x20  // Row/column exchange
+#define MADCTL_BGR 0x08  // BGR color order
+
+// Correct configuration (no horizontal mirroring)
+uint8_t madctl = MADCTL_MV | MADCTL_BGR;
+```
+
+⚠️ **Important:** Do NOT include `MADCTL_MX` bit, or the display will be horizontally mirrored.
+
+### Custom Font Rendering
+
+The firmware uses a **custom 8x16 pixel bitmap font** for all text rendering:
+- Direct SPI transfers for maximum speed
+- No external font files required
+- Embedded in `simple_display.c` as const array
+- Supports ASCII characters 0x20-0x7F
 
 ## 📜 License
 
@@ -367,6 +444,7 @@ MIT License - See LICENSE file
 
 ---
 
-**Version:** 2.2.0-simple  
+**Version:** 2.3.0-simple  
 **Date:** January 2026  
-**Target:** Freenove ESP32 Display (FNK0103S)
+**Target:** Freenove ESP32 Display (FNK0103S)  
+**Devices Supported:** 4 (MPPT Solar, SmartShunt, Battery Sense, AC Charger IP22)
