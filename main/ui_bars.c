@@ -76,7 +76,7 @@ uint16_t get_current_color(float current_a) {
 // ============================================================================
 
 /**
- * Helper: Draw a horizontal progress bar
+ * Helper: Draw a segmented LED-style horizontal progress bar
  * @param x Starting X position
  * @param y Starting Y position
  * @param width Total bar width
@@ -89,20 +89,45 @@ static void draw_progress_bar(int x, int y, int width, int height, float filled_
     if (filled_percent < 0) filled_percent = 0;
     if (filled_percent > 100) filled_percent = 100;
     
-    // Draw background (empty part) in dark gray
-    display_fill_rect(x, y, width, height, 0x2104); // Dark gray
+    // Configuration
+    const int num_segments = 20;  // Number of LED segments
+    const int gap = 2;            // Gap between segments
     
-    // Draw filled portion
-    int filled_width = (int)((width * filled_percent) / 100.0f);
-    if (filled_width > 0) {
-        display_fill_rect(x, y, filled_width, height, color);
+    // Calculate segment dimensions
+    int total_gap_width = gap * (num_segments - 1);
+    int available_width = width - total_gap_width;
+    int segment_width = available_width / num_segments;
+    
+    if (segment_width < 2) {
+        segment_width = 2;
+        // Fallback: reduce segments if width is too small
     }
     
-    // Draw border
-    display_fill_rect(x, y, width, 1, COLOR_WHITE);        // Top
-    display_fill_rect(x, y + height - 1, width, 1, COLOR_WHITE); // Bottom
-    display_fill_rect(x, y, 1, height, COLOR_WHITE);        // Left
-    display_fill_rect(x + width - 1, y, 1, height, COLOR_WHITE); // Right
+    // Draw background
+    display_fill_rect(x, y, width, height, 0x0000); // Black background
+    
+    // Calculate how many segments should be filled
+    int filled_segments = (int)((num_segments * filled_percent) / 100.0f);
+    
+    // Draw each segment
+    for (int i = 0; i < num_segments; i++) {
+        int seg_x = x + i * (segment_width + gap);
+        
+        if (i < filled_segments) {
+            // Filled segment - full brightness
+            display_fill_rect(seg_x, y, segment_width, height, color);
+        } else {
+            // Empty segment - very dark version of the color
+            uint16_t dark_color = 0x2104; // Dark gray for all empty segments
+            display_fill_rect(seg_x, y, segment_width, height, dark_color);
+        }
+    }
+    
+    // Draw outer border for the entire bar
+    display_fill_rect(x - 1, y - 1, width + 2, 1, 0x630C);           // Top border (dim gray)
+    display_fill_rect(x - 1, y + height, width + 2, 1, 0x630C);      // Bottom border
+    display_fill_rect(x - 1, y - 1, 1, height + 2, 0x630C);          // Left border
+    display_fill_rect(x + width, y - 1, 1, height + 2, 0x630C);      // Right border
 }
 
 /**
