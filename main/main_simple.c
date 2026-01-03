@@ -30,6 +30,24 @@ static bool has_solar_data = false;
 static bool has_battery_data = false;
 static bool has_smartshunt_data = false;
 
+// Previous values for change detection
+static bool ui_initialized = false;
+static int prev_pv_power = -999;
+static float prev_solar_voltage = -999;
+static float prev_solar_current = -999;
+static float prev_solar_yield = -999;
+static uint8_t prev_solar_state = 0xFF;
+static float prev_soc = -999;
+static float prev_shunt_voltage = -999;
+static float prev_shunt_current = -999;
+static uint16_t prev_ttg = 0xFFFF;
+static float prev_consumed = -999;
+static float prev_bat_voltage = -999;
+static float prev_bat_temp = -999;
+static bool prev_has_solar = false;
+static bool prev_has_battery = false;
+static bool prev_has_shunt = false;
+
 // Helper to get state string
 static const char* get_state_string(uint8_t state) {
     switch (state) {
@@ -83,7 +101,7 @@ static void victron_data_callback(const victron_data_t *data) {
     xSemaphoreGive(data_mutex);
 }
 
-// Draw the main UI - 3 sections layout (no header/footer, maximized space)
+// Draw the main UI - optimized to update only changed values
 static void draw_ui(void) {
     char buf[64];
 
@@ -96,54 +114,92 @@ static void draw_ui(void) {
 
     xSemaphoreTake(data_mutex, portMAX_DELAY);
     
+    // First time initialization - draw static elements once
+    if (!ui_initialized) {
+        display_fill(COLOR_BLACK);
+        
+        // Draw all section headers (static)
+        display_string(pad, pad, "MPPT SOLAR CHARGER", COLOR_YELLOW, COLOR_BLACK);
+        display_string(half_w + pad, pad, "SMARTSHUNT", COLOR_YELLOW, COLOR_BLACK);
+        display_string(pad, half_h + pad, "BATTERY SENSE", COLOR_YELLOW, COLOR_BLACK);
+        display_string(half_w + pad, half_h + pad, "Reserved", COLOR_YELLOW, COLOR_BLACK);
+        
+        // Draw Q4 borders (static)
+        display_fill_rect(half_w, half_h, half_w, 2, COLOR_WHITE);
+        display_fill_rect(half_w, DISPLAY_HEIGHT - 2, half_w, 2, COLOR_WHITE);
+        display_fill_rect(half_w, half_h, 2, half_h, COLOR_WHITE);
+        display_fill_rect(DISPLAY_WIDTH - 2, half_h, 2, half_h, COLOR_WHITE);
+        
+        ui_initialized = true;
+    }
+    
     // === Q1: MPPT SOLAR CHARGER (top-left) ===
     int base_x = 0;
     int base_y = 0;
-    display_fill_rect(base_x, base_y, half_w, half_h, COLOR_BLACK);
-    display_string(base_x + pad, base_y + pad, "MPPT SOLAR CHARGER", COLOR_YELLOW, COLOR_BLACK);
-    display_string(base_x + half_w - pad - 24, base_y + pad, has_solar_data ? "    " : "(--)", has_solar_data ? COLOR_BLACK : COLOR_RED, COLOR_BLACK);
+    
+    // Only update status indicator if changed
+    if (has_solar_data != prev_has_solar) {
+        display_string(base_x + half_w - pad - 24, base_y + pad, has_solar_data ? "    " : "(--)", has_solar_data ? COLOR_BLACK : COLOR_RED, COLOR_BLACK);
+        prev_has_solar = has_solar_data;
+    }
 
     int y = base_y + pad + 18;
     {
         int pv_power = has_solar_data ? current_solar.record.solar.pv_power_w : 0;
-        const char *state = has_solar_data ? get_state_string(current_solar.record.solar.device_state) : "OFF";
+        uint8_t state = has_solar_data ? current_solar.record.solar.device_state : VIC_STATE_OFF;
+        const char *state_str = get_state_string(state);
         float voltage = has_solar_data ? current_solar.record.solar.battery_voltage_centi / 100.0f : 0.0f;
         float current = has_solar_data ? current_solar.record.solar.battery_current_deci / 10.0f : 0.0f;
         float yield = has_solar_data ? current_solar.record.solar.yield_today_centikwh / 100.0f : 0.0f;
 
-        // PV Power - BIG (main value)
-        snprintf(buf, sizeof(buf), "%4dW", pv_power);
-        display_string_large(base_x + pad, y, buf, COLOR_GREEN, COLOR_BLACK);
+        // PV Power - only update if changed
+        if (pv_power != prev_pv_power) {
+            snprintf(buf, sizeof(buf), "%4dW", pv_power);
+            display_string_large(base_x + pad, y, buf, COLOR_GREEN, COLOR_BLACK);
+            draw_mppt_power_bar(base_x + pad, y + 34, bar_w, pv_power);
+            prev_pv_power = pv_power;
+        }
 
-        // State on right
-        snprintf(buf, sizeof(buf), "%-8s", state);
-        display_string(base_x + pad + inner_w - 70, y + 8, buf, COLOR_WHITE, COLOR_BLACK);
+        // State - only update if changed
+        if (state != prev_solar_state) {
+            snprintf(buf, sizeof(buf), "%-8s", state_str);
+            display_string(base_x + pad + inner_w - 70, y + 8, buf, COLOR_WHITE, COLOR_BLACK);
+            prev_solar_state = state;
+        }
+        y += 34 + 14;
+
+        // Battery Current - only update if changed
+        if (current != prev_solar_current) {
+            snprintf(buf, sizeof(buf), "%.1fA ", current);
+            display_string_large(base_x + pad, y, buf, COLOR_CYAN, COLOR_BLACK);
+            prev_solar_current = current;
+        }
+
+        // Battery Voltage - only update if changed
+        if (voltage != prev_solar_voltage) {
+            snprintf(buf, sizeof(buf), "%.2fV", voltage);
+            display_string(base_x + pad + inner_w - 70, y + 8, buf, COLOR_WHITE, COLOR_BLACK);
+            prev_solar_voltage = voltage;
+        }
         y += 34;
 
-        // Power bar (0-450W)
-        draw_mppt_power_bar(base_x + pad, y, bar_w, pv_power);
-        y += 14;
-
-        // Battery Current - BIG (main charging value)
-        snprintf(buf, sizeof(buf), "%.1fA ", current);
-        display_string_large(base_x + pad, y, buf, COLOR_CYAN, COLOR_BLACK);
-
-        // Battery Voltage - smaller on right
-        snprintf(buf, sizeof(buf), "%.2fV", voltage);
-        display_string(base_x + pad + inner_w - 70, y + 8, buf, COLOR_WHITE, COLOR_BLACK);
-        y += 34;
-
-        // Yield Today
-        snprintf(buf, sizeof(buf), "Today: %.2f kWh    ", yield);
-        display_string(base_x + pad, y, buf, COLOR_WHITE, COLOR_BLACK);
+        // Yield Today - only update if changed
+        if (yield != prev_solar_yield) {
+            snprintf(buf, sizeof(buf), "Today: %.2f kWh    ", yield);
+            display_string(base_x + pad, y, buf, COLOR_WHITE, COLOR_BLACK);
+            prev_solar_yield = yield;
+        }
     }
     
     // === Q2: SMARTSHUNT (top-right) ===
     base_x = half_w;
     base_y = 0;
-    display_fill_rect(base_x, base_y, half_w, half_h, COLOR_BLACK);
-    display_string(base_x + pad, base_y + pad, "SMARTSHUNT", COLOR_YELLOW, COLOR_BLACK);
-    display_string(base_x + half_w - pad - 32, base_y + pad, has_smartshunt_data ? "      " : "(--)", has_smartshunt_data ? COLOR_BLACK : COLOR_RED, COLOR_BLACK);
+    
+    // Only update status indicator if changed
+    if (has_smartshunt_data != prev_has_shunt) {
+        display_string(base_x + half_w - pad - 32, base_y + pad, has_smartshunt_data ? "      " : "(--)", has_smartshunt_data ? COLOR_BLACK : COLOR_RED, COLOR_BLACK);
+        prev_has_shunt = has_smartshunt_data;
+    }
 
     y = base_y + pad + 18;
     {
@@ -153,49 +209,61 @@ static void draw_ui(void) {
         uint16_t ttg = has_smartshunt_data ? current_smartshunt.record.battery.time_to_go_minutes : 0;
         float consumed = has_smartshunt_data ? current_smartshunt.record.battery.consumed_ah_deci / -10.0f : 0.0f;
 
-        // SOC - BIG
-        snprintf(buf, sizeof(buf), "%.0f%% ", soc);
-        uint16_t soc_color = get_soc_color(soc);
-        display_string_large(base_x + pad, y, buf, has_smartshunt_data ? soc_color : COLOR_WHITE, COLOR_BLACK);
-
-        // Voltage on right
-        snprintf(buf, sizeof(buf), "%.2fV ", voltage);
-        display_string(base_x + pad + inner_w - 70, y + 8, buf, COLOR_CYAN, COLOR_BLACK);
-        y += 34;
-
-        // SOC Bar (0-100%)
-        draw_smartshunt_soc_bar(base_x + pad, y, bar_w, has_smartshunt_data ? soc : 0.0f);
-        y += 14;
-
-        // Current - medium
-        snprintf(buf, sizeof(buf), "%+.2fA   ", curr);
-        uint16_t curr_color = get_current_color(curr);
-        display_string_large(base_x + pad, y, buf, has_smartshunt_data ? curr_color : COLOR_WHITE, COLOR_BLACK);
-
-        // TTG on right
-        if (ttg != 0xFFFF && ttg > 0) {
-            snprintf(buf, sizeof(buf), "TTG:%dh%02dm ", ttg/60, ttg%60);
-        } else {
-            snprintf(buf, sizeof(buf), "TTG:---    ");
+        // SOC - only update if changed
+        if (soc != prev_soc) {
+            snprintf(buf, sizeof(buf), "%.0f%% ", soc);
+            uint16_t soc_color = get_soc_color(soc);
+            display_string_large(base_x + pad, y, buf, has_smartshunt_data ? soc_color : COLOR_WHITE, COLOR_BLACK);
+            draw_smartshunt_soc_bar(base_x + pad, y + 34, bar_w, has_smartshunt_data ? soc : 0.0f);
+            prev_soc = soc;
         }
-        display_string(base_x + pad + inner_w - 90, y + 8, buf, COLOR_WHITE, COLOR_BLACK);
-        y += 34;
 
-        // Current Bar (-100A to +50A)
-        draw_smartshunt_current_bar(base_x + pad, y, bar_w, has_smartshunt_data ? curr : 0.0f);
-        y += 14;
+        // Voltage - only update if changed
+        if (voltage != prev_shunt_voltage) {
+            snprintf(buf, sizeof(buf), "%.2fV ", voltage);
+            display_string(base_x + pad + inner_w - 70, y + 8, buf, COLOR_CYAN, COLOR_BLACK);
+            prev_shunt_voltage = voltage;
+        }
+        y += 34 + 14;
 
-        // Consumed
-        snprintf(buf, sizeof(buf), "Used: %.1fAh         ", consumed);
-        display_string(base_x + pad, y, buf, COLOR_WHITE, COLOR_BLACK);
+        // Current - only update if changed
+        if (curr != prev_shunt_current) {
+            snprintf(buf, sizeof(buf), "%+.2fA   ", curr);
+            uint16_t curr_color = get_current_color(curr);
+            display_string_large(base_x + pad, y, buf, has_smartshunt_data ? curr_color : COLOR_WHITE, COLOR_BLACK);
+            draw_smartshunt_current_bar(base_x + pad, y + 34, bar_w, has_smartshunt_data ? curr : 0.0f);
+            prev_shunt_current = curr;
+        }
+
+        // TTG - only update if changed
+        if (ttg != prev_ttg) {
+            if (ttg != 0xFFFF && ttg > 0) {
+                snprintf(buf, sizeof(buf), "TTG:%dh%02dm ", ttg/60, ttg%60);
+            } else {
+                snprintf(buf, sizeof(buf), "TTG:---    ");
+            }
+            display_string(base_x + pad + inner_w - 90, y + 8, buf, COLOR_WHITE, COLOR_BLACK);
+            prev_ttg = ttg;
+        }
+        y += 34 + 14;
+
+        // Consumed - only update if changed
+        if (consumed != prev_consumed) {
+            snprintf(buf, sizeof(buf), "Used: %.1fAh         ", consumed);
+            display_string(base_x + pad, y, buf, COLOR_WHITE, COLOR_BLACK);
+            prev_consumed = consumed;
+        }
     }
     
     // === Q3: BATTERY SENSE (bottom-left) ===
     base_x = 0;
     base_y = half_h;
-    display_fill_rect(base_x, base_y, half_w, half_h, COLOR_BLACK);
-    display_string(base_x + pad, base_y + pad, "BATTERY SENSE", COLOR_YELLOW, COLOR_BLACK);
-    display_string(base_x + half_w - pad - 24, base_y + pad, has_battery_data ? "    " : "(--)", has_battery_data ? COLOR_BLACK : COLOR_RED, COLOR_BLACK);
+    
+    // Only update status indicator if changed
+    if (has_battery_data != prev_has_battery) {
+        display_string(base_x + half_w - pad - 24, base_y + pad, has_battery_data ? "    " : "(--)", has_battery_data ? COLOR_BLACK : COLOR_RED, COLOR_BLACK);
+        prev_has_battery = has_battery_data;
+    }
 
     y = base_y + pad + 18;
     {
@@ -205,45 +273,40 @@ static void draw_ui(void) {
 
         bool temp_valid = has_battery_data && (current_battery.record.battery.aux_input == 2);
         if (!temp_valid && has_battery_data) {
-            temp_c = 0.0f; // Fallback
+            temp_c = 0.0f;
         }
 
-        // TEMPERATURE - BIG (main value)
-        snprintf(buf, sizeof(buf), "%.1f C ", temp_c);
-        uint16_t temp_color = get_battery_temp_color(temp_c);
-        uint16_t temp_fg = has_battery_data ? temp_color : COLOR_WHITE;
-        display_string_large(base_x + pad, y, buf, temp_fg, COLOR_BLACK);
-        // Degree symbol workaround
-        display_string(base_x + pad + 110, y, "o", temp_fg, COLOR_BLACK);
+        // TEMPERATURE - only update if changed
+        if (temp_c != prev_bat_temp) {
+            snprintf(buf, sizeof(buf), "%.1f C ", temp_c);
+            uint16_t temp_color = get_battery_temp_color(temp_c);
+            uint16_t temp_fg = has_battery_data ? temp_color : COLOR_WHITE;
+            display_string_large(base_x + pad, y, buf, temp_fg, COLOR_BLACK);
+            display_string(base_x + pad + 110, y, "o", temp_fg, COLOR_BLACK);
+            draw_battery_temp_bar(base_x + pad, y + 34, bar_w, has_battery_data ? temp_c : 0.0f);
+            prev_bat_temp = temp_c;
+        }
+        y += 34 + 14;
+
+        // VOLTAGE - only update if changed
+        if (voltage != prev_bat_voltage) {
+            snprintf(buf, sizeof(buf), "%.2fV     ", voltage);
+            display_string_large(base_x + pad, y, buf, COLOR_CYAN, COLOR_BLACK);
+            prev_bat_voltage = voltage;
+        }
         y += 34;
 
-        // Temperature bar (-10C to +50C)
-        draw_battery_temp_bar(base_x + pad, y, bar_w, has_battery_data ? temp_c : 0.0f);
-        y += 14;
-
-        // VOLTAGE - medium size
-        snprintf(buf, sizeof(buf), "%.2fV     ", voltage);
-        display_string_large(base_x + pad, y, buf, COLOR_CYAN, COLOR_BLACK);
-        y += 34;
-
-        // Status line
-        if (has_battery_data) {
-            display_string(base_x + pad, y, "Battery OK              ", COLOR_GREEN, COLOR_BLACK);
-        } else {
-            display_string(base_x + pad, y, "No data                 ", COLOR_ORANGE, COLOR_BLACK);
+        // Status line - update only on data status change
+        static bool last_bat_status = false;
+        if (has_battery_data != last_bat_status) {
+            if (has_battery_data) {
+                display_string(base_x + pad, y, "Battery OK              ", COLOR_GREEN, COLOR_BLACK);
+            } else {
+                display_string(base_x + pad, y, "No data                 ", COLOR_ORANGE, COLOR_BLACK);
+            }
+            last_bat_status = has_battery_data;
         }
     }
-
-    // === Q4: Placeholder (bottom-right) ===
-    base_x = half_w;
-    base_y = half_h;
-    display_fill_rect(base_x, base_y, half_w, half_h, COLOR_BLACK);
-    // Draw a simple border and label
-    display_fill_rect(base_x, base_y, half_w, 2, COLOR_WHITE);
-    display_fill_rect(base_x, base_y + half_h - 2, half_w, 2, COLOR_WHITE);
-    display_fill_rect(base_x, base_y, 2, half_h, COLOR_WHITE);
-    display_fill_rect(base_x + half_w - 2, base_y, 2, half_h, COLOR_WHITE);
-    display_string(base_x + pad, base_y + pad, "Reserved", COLOR_YELLOW, COLOR_BLACK);
 
     xSemaphoreGive(data_mutex);
 }
