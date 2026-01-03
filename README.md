@@ -235,14 +235,14 @@ The display uses a **4-quadrant landscape layout** (480x320 pixels, 2x2 grid) wi
 ┌──────────────────────┬──────────────────────┐
 │ MPPT SOLAR CHARGER   │ SMARTSHUNT           │
 │   284W      BULK     │   87%        13.45V  │
-│ ▰▰▰▰▰▰▰▰▰▰▰░░░░░░░░ │ ▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰░░ │ ← LED bars
+│ ▰▰▰▰▰▰▰▰▰▰▰ │ ▰▰▰▰▰▰▰▰▰▰▰  │ ← LED bars
 │   13.45V    2.1A     │   +2.5A   TTG:12h45m │
-│   Today: 1.23 kWh    │ ▰▰▰▰▰▰▰░░░░░░░░░░░░ │
+│   Today: 1.23 kWh    │ ▰▰▰▰▰▰▰▰▰▰▰ │
 │                      │   Used: 5.4Ah        │
 ├──────────────────────┼──────────────────────┤
 │ BATTERY SENSE        │ AC CHARGER IP22      │
 │   22.5°C             │   ABSORB             │
-│ ▰▰▰▰▰▰▰▰▰▰▰▰░░░░░░░ │   13.65V             │
+│ ▰▰▰▰▰▰▰▰▰▰▰  │   13.65V             │
 │   13.44V             │   12.5A              │
 │   Battery OK         │   Charging OK        │
 └──────────────────────┴──────────────────────┘
