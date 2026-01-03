@@ -16,19 +16,41 @@
 
 static const char *TAG = "VICTRON";
 
-// Stub for ui_set_ble_mac (required by victron_ble.c)
-void ui_set_ble_mac(const uint8_t *mac) {
-    (void)mac;
-}
-
 // Current data storage
 static SemaphoreHandle_t data_mutex = NULL;
 static victron_data_t current_solar = {0};
 static victron_data_t current_battery = {0};
 static victron_data_t current_smartshunt = {0};
+static victron_data_t current_charger = {0};
 static bool has_solar_data = false;
 static bool has_battery_data = false;
 static bool has_smartshunt_data = false;
+static bool has_charger_data = false;
+
+// Debug: last seen MAC addresses
+static uint8_t last_unknown_mac[6] = {0};
+static uint32_t last_unknown_mac_time = 0;
+static bool has_unknown_mac = false;
+
+// Stub for ui_set_ble_mac - now captures ALL MACs for debug display
+void ui_set_ble_mac(const uint8_t *mac) {
+    if (!data_mutex) return;
+    
+    xSemaphoreTake(data_mutex, portMAX_DELAY);
+    
+    // Known MACs (reversed byte order LSB first)
+    static const uint8_t mac_mppt[6] = { 0xb5, 0x7d, 0xb4, 0x39, 0x56, 0xc1 };
+    static const uint8_t mac_batt[6] = { 0x2b, 0x9e, 0xbd, 0x91, 0xb6, 0xc1 };
+    static const uint8_t mac_smartshunt[6] = { 0x2e, 0x1b, 0x0c, 0xcf, 0x3c, 0xf9 };
+    static const uint8_t mac_charger[6] = { 0x00, 0x7b, 0xca, 0xfc, 0xa6, 0xe9 };
+    
+    // Store ALL MACs for debugging (update every time we see a Victron device)
+    memcpy(last_unknown_mac, mac, 6);
+    last_unknown_mac_time = xTaskGetTickCount();
+    has_unknown_mac = true;
+    
+    xSemaphoreGive(data_mutex);
+}
 
 // Previous values for change detection
 static bool ui_initialized = false;
@@ -44,9 +66,13 @@ static uint16_t prev_ttg = 0xFFFF;
 static float prev_consumed = -999;
 static float prev_bat_voltage = -999;
 static float prev_bat_temp = -999;
+static float prev_charger_voltage = -999;
+static float prev_charger_current = -999;
+static uint8_t prev_charger_state = 0xFF;
 static bool prev_has_solar = false;
 static bool prev_has_battery = false;
 static bool prev_has_shunt = false;
+static bool prev_has_charger = false;
 
 // Helper to get state string
 static const char* get_state_string(uint8_t state) {
@@ -73,29 +99,23 @@ static void victron_data_callback(const victron_data_t *data) {
     if (data->device_id == VICTRON_DEVICE_MPPT) {
         memcpy(&current_solar, data, sizeof(victron_data_t));
         has_solar_data = true;
-        ESP_LOGI(TAG, "MPPT: %.2fV %.1fA %dW", 
-            data->record.solar.battery_voltage_centi / 100.0f,
-            data->record.solar.battery_current_deci / 10.0f,
-            data->record.solar.pv_power_w);
     }
     else if (data->device_id == VICTRON_DEVICE_SMARTSHUNT) {
         memcpy(&current_smartshunt, data, sizeof(victron_data_t));
         has_smartshunt_data = true;
-        ESP_LOGI(TAG, "SmartShunt: %.2fV %.1f%% %.2fA", 
-            data->record.battery.battery_voltage_centi / 100.0f,
-            data->record.battery.soc_deci_percent / 10.0f,
-            data->record.battery.battery_current_milli / 1000.0f);
     }
     else if (data->device_id == VICTRON_DEVICE_BATTERY_SENSE) {
         // SmartBatterySense - only voltage and temperature
         memcpy(&current_battery, data, sizeof(victron_data_t));
         has_battery_data = true;
-        // Temperature is in aux_value when aux_input == 2 (Kelvin * 100)
-        float temp_c = (data->record.battery.aux_value / 100.0f) - 273.15f;
-        ESP_LOGI(TAG, "BatterySense: %.2fV %.1f°C (aux_mode=%d)", 
-            data->record.battery.battery_voltage_centi / 100.0f,
-            temp_c,
-            data->record.battery.aux_input);
+    }
+    else if (data->device_id == VICTRON_DEVICE_AC_CHARGER) {
+        memcpy(&current_charger, data, sizeof(victron_data_t));
+        has_charger_data = true;
+        ESP_LOGI(TAG, "AC Charger: %.2fV %.1fA State:%d", 
+            data->record.ac_charger.battery_voltage_1_centi / 100.0f,
+            data->record.ac_charger.battery_current_1_deci / 10.0f,
+            data->record.ac_charger.device_state);
     }
     
     xSemaphoreGive(data_mutex);
@@ -122,7 +142,7 @@ static void draw_ui(void) {
         display_string(pad, pad, "MPPT SOLAR CHARGER", COLOR_YELLOW, COLOR_BLACK);
         display_string(half_w + pad, pad, "SMARTSHUNT", COLOR_YELLOW, COLOR_BLACK);
         display_string(pad, half_h + pad, "BATTERY SENSE", COLOR_YELLOW, COLOR_BLACK);
-        display_string(half_w + pad, half_h + pad, "Reserved", COLOR_YELLOW, COLOR_BLACK);
+        display_string(half_w + pad, half_h + pad, "AC CHARGER IP22", COLOR_YELLOW, COLOR_BLACK);
         
         // Draw cross separator (light gray lines between quadrants)
         uint16_t separator_color = 0x528A; // Light gray
@@ -307,6 +327,57 @@ static void draw_ui(void) {
             }
             last_bat_status = has_battery_data;
         }
+    }
+
+    // === Q4: AC CHARGER IP22 (bottom-right) ===
+    base_x = half_w;
+    base_y = half_h;
+    
+    // Only update status indicator if changed
+    if (has_charger_data != prev_has_charger) {
+        display_string(base_x + half_w - pad - 24, base_y + pad, has_charger_data ? "    " : "(--)", has_charger_data ? COLOR_BLACK : COLOR_RED, COLOR_BLACK);
+        prev_has_charger = has_charger_data;
+    }
+
+    y = base_y + pad + 18;
+    
+    if (!has_charger_data) {
+        display_string(base_x + pad, y, "Waiting for", COLOR_ORANGE, COLOR_BLACK);
+        y += 18;
+        display_string(base_x + pad, y, "AC Charger BLE...", COLOR_ORANGE, COLOR_BLACK);
+    } else {
+        // Normal display mode when charger is detected
+        uint8_t state = current_charger.record.ac_charger.device_state;
+        const char *state_str = get_state_string(state);
+        float voltage = current_charger.record.ac_charger.battery_voltage_1_centi / 100.0f;
+        float current = current_charger.record.ac_charger.battery_current_1_deci / 10.0f;
+
+        // State - only update if changed
+        if (state != prev_charger_state) {
+            snprintf(buf, sizeof(buf), "%-8s", state_str);
+            display_string_large(base_x + pad, y, buf, COLOR_CYAN, COLOR_BLACK);
+            prev_charger_state = state;
+        }
+        y += 34;
+
+        // Voltage - only update if changed
+        if (voltage != prev_charger_voltage) {
+            snprintf(buf, sizeof(buf), "%.2fV     ", voltage);
+            display_string_large(base_x + pad, y, buf, COLOR_GREEN, COLOR_BLACK);
+            prev_charger_voltage = voltage;
+        }
+        y += 34;
+
+        // Current - only update if changed  
+        if (current != prev_charger_current) {
+            snprintf(buf, sizeof(buf), "%.1fA      ", current);
+            display_string_large(base_x + pad, y, buf, COLOR_YELLOW, COLOR_BLACK);
+            prev_charger_current = current;
+        }
+        y += 34;
+
+        // Status line
+        display_string(base_x + pad, y, "Charging OK         ", COLOR_GREEN, COLOR_BLACK);
     }
 
     xSemaphoreGive(data_mutex);

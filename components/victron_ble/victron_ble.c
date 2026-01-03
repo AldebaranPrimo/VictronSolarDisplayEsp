@@ -44,6 +44,12 @@ static uint8_t aes_key_smartshunt[16] = {
     0x3d, 0x7a, 0x43, 0x74, 0x0b, 0x7f, 0x10, 0x21
 };
 
+static uint8_t mac_charger[6] = { 0x00, 0x7b, 0xca, 0xfc, 0xa6, 0xe9 };  // e9:a6:fc:ca:7b:00
+static uint8_t aes_key_charger[16] = {
+    0x19, 0xef, 0xd0, 0xcf, 0x51, 0xbe, 0xfc, 0x3e,
+    0x2e, 0x4a, 0x2b, 0x85, 0x84, 0x14, 0x4f, 0x2a
+};
+
 static uint8_t aes_key[16]; // Working key for current decrypt
 
 typedef enum {
@@ -217,18 +223,20 @@ static int ble_gap_event_handler(struct ble_gap_event *event, void *arg)
     if (memcmp(mac, mac_mppt, 6) == 0) {
         memcpy(aes_key, aes_key_mppt, 16);
         device_id = VICTRON_DEVICE_MPPT;
-        ESP_LOGD(TAG, "Using MPPT key");
     } else if (memcmp(mac, mac_batt, 6) == 0) {
         memcpy(aes_key, aes_key_batt, 16);
         device_id = VICTRON_DEVICE_BATTERY_SENSE;
-        ESP_LOGD(TAG, "Using BatterySense key");
     } else if (memcmp(mac, mac_smartshunt, 6) == 0) {
         memcpy(aes_key, aes_key_smartshunt, 16);
         device_id = VICTRON_DEVICE_SMARTSHUNT;
-        ESP_LOGD(TAG, "Using SmartShunt key");
+    } else if (memcmp(mac, mac_charger, 6) == 0) {
+        memcpy(aes_key, aes_key_charger, 16);
+        device_id = VICTRON_DEVICE_AC_CHARGER;
+        ESP_LOGI(TAG, "AC CHARGER detected - MAC: %02X:%02X:%02X:%02X:%02X:%02X",
+            mac[5], mac[4], mac[3], mac[2], mac[1], mac[0]);
     } else {
-        // Unknown device - skip
-        VDBG("Unknown MAC, skipping");
+        ESP_LOGW(TAG, "Unknown Victron MAC: %02X:%02X:%02X:%02X:%02X:%02X - skipping",
+            mac[5], mac[4], mac[3], mac[2], mac[1], mac[0]);
         return 0;
     }
 
@@ -274,7 +282,6 @@ static int ble_gap_event_handler(struct ble_gap_event *event, void *arg)
         ESP_LOG_BUFFER_HEX_LEVEL(TAG, output, encr_size, ESP_LOG_INFO);
     }
 
-    ui_set_ble_mac(event->disc.addr.val);
     const victron_record_type_t rec_type = (victron_record_type_t)mdata->victronRecordType;
 
     /* ---------------- Record Parsing ---------------- */
@@ -284,14 +291,6 @@ static int ble_gap_event_handler(struct ble_gap_event *event, void *arg)
 
             uint16_t load_raw = (uint16_t)output[10] | ((uint16_t)(output[11] & 0x01) << 8);
             float load_current_A = (load_raw == 0x1FF) ? 0.0f : load_raw / 10.0f;
-
-            ESP_LOGI(TAG, "=== SmartSolar Charger ===");
-            ESP_LOGI(TAG, "Vbat=%.2fV Ibat=%.1fA PV=%uW Yield=%.2fkWh Load=%.1fA",
-                     r->battery_voltage_centi / 100.0f,
-                     r->battery_current_deci / 10.0f,
-                     r->pv_power_w,
-                     r->yield_today_centikwh / 100.0f,
-                     load_current_A);
 
             if (data_cb) {
                 victron_data_t parsed = {
@@ -329,12 +328,6 @@ static int ble_gap_event_handler(struct ble_gap_event *event, void *arg)
             uint32_t soc_bits = tail & ((1u << 10) - 1u);
 
             float current_A   = current_bits / 1000.0f;
-
-            ESP_LOGI(TAG, "=== Battery Monitor (PID=0x%04X) ===", product_id);
-            ESP_LOGI(TAG, "Vbat=%.2fV Ibat=%.3fA SOC=%.1f%% TTG=%u min",
-                     voltage_raw / 100.0f, current_A, soc_bits / 10.0f, ttg_raw);
-            ESP_LOGI(TAG, "Aux_mode=%u Aux_val=%u (%.2fK = %.2fC), Alarm=0x%04X",
-                     aux_input, aux_raw, aux_raw / 100.0f, (aux_raw / 100.0f) - 273.15f, alarm_raw);
 
             if (data_cb) {
                 victron_data_t parsed = {
@@ -374,13 +367,6 @@ static int ble_gap_event_handler(struct ble_gap_event *event, void *arg)
             uint16_t ac_voltage_centi = (uint16_t)(tail & 0x7FFFu);
             uint16_t ac_current_deci = (uint16_t)((tail >> 15) & 0x7FFu);
 
-            ESP_LOGI(TAG, "=== Inverter ===");
-            ESP_LOGI(TAG, "Vbat=%.2fV AC=%.2fV Iac=%.1fA P=%uVA",
-                     battery_voltage_centi / 100.0f,
-                     ac_voltage_centi / 100.0f,
-                     ac_current_deci / 10.0f,
-                     (unsigned)ac_apparent_power_va);
-
             if (data_cb) {
                 victron_data_t parsed = {
                     .type = VICTRON_BLE_RECORD_INVERTER,
@@ -413,14 +399,6 @@ static int ble_gap_event_handler(struct ble_gap_event *event, void *arg)
                                 | ((uint32_t)b[7] << 8)
                                 | ((uint32_t)b[8] << 16)
                                 | ((uint32_t)b[9] << 24);
-
-            ESP_LOGI(TAG, "=== DC/DC Converter ===");
-            ESP_LOGI(TAG, "State=%u Error=0x%02X Vin=%.2fV Vout=%.2fV OffReason=0x%08lX",
-                     (unsigned)device_state,
-                     (unsigned)charger_error,
-                     input_voltage_centi / 100.0f,
-                     output_voltage_centi / 100.0f,
-                     (unsigned long)off_reason);
 
             if (data_cb) {
                 victron_data_t parsed = {
@@ -460,13 +438,6 @@ static int ble_gap_event_handler(struct ble_gap_event *event, void *arg)
             uint8_t temperature_raw = (encr_size > 16) ? b[16] : 0;
             int temperature_c = (int)temperature_raw - 40;
 
-            ESP_LOGI(TAG, "=== Smart Lithium ===");
-            ESP_LOGI(TAG, "Flags=0x%08lX Err=0x%04X Batt=%.2fV Temp=%dC",
-                     (unsigned long)bms_flags,
-                     (unsigned)error_flags,
-                     battery_voltage_centi / 100.0f,
-                     temperature_c);
-
             if (data_cb) {
                 victron_data_t parsed = {
                     .type = VICTRON_BLE_RECORD_SMART_LITHIUM,
@@ -486,6 +457,34 @@ static int ble_gap_event_handler(struct ble_gap_event *event, void *arg)
                 parsed.record.lithium.battery_voltage_centi = battery_voltage_centi;
                 parsed.record.lithium.balancer_status = balancer_status;
                 parsed.record.lithium.temperature_c = temperature_raw;
+                data_cb(&parsed);
+            }
+            break;
+        }
+
+        case VICTRON_BLE_RECORD_AC_CHARGER: {
+            if (encr_size < 11) {
+                ESP_LOGW(TAG, "AC Charger payload too short: %d", encr_size);
+                break;
+            }
+
+            const victron_record_ac_charger_t *r = (const victron_record_ac_charger_t *)output;
+
+            ESP_LOGI(TAG, "=== AC Charger IP22 ===");
+            ESP_LOGI(TAG, "State=%u Error=0x%02X Vbat1=%.2fV Ibat1=%.1fA Temp=%dC",
+                     (unsigned)r->device_state,
+                     (unsigned)r->charger_error,
+                     r->battery_voltage_1_centi / 100.0f,
+                     r->battery_current_1_deci / 10.0f,
+                     (int)r->temperature_c);
+
+            if (data_cb) {
+                victron_data_t parsed = {
+                    .type = VICTRON_BLE_RECORD_AC_CHARGER,
+                    .product_id = product_id,
+                    .device_id = device_id
+                };
+                parsed.record.ac_charger = *r;
                 data_cb(&parsed);
             }
             break;
