@@ -135,6 +135,8 @@ static uint8_t aes_key_charger[16] = {
 };
 ```
 
+> ⚠️ **Security Note:** These are my personal device keys and MAC addresses, hardcoded and visible in the source code. I know it's not elegant from a security standpoint, but it's damn convenient! 😎 The risk of someone intercepting BLE data from my camper van in the middle of nowhere is extremely remote. If you're using this code, remember to replace them with your own device credentials.
+
 ### Device MAC Addresses
 
 In addition to AES keys, devices are identified by their **MAC addresses** (configured in `victron_ble.c`):
