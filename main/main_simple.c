@@ -124,11 +124,12 @@ static void draw_ui(void) {
         display_string(pad, half_h + pad, "BATTERY SENSE", COLOR_YELLOW, COLOR_BLACK);
         display_string(half_w + pad, half_h + pad, "Reserved", COLOR_YELLOW, COLOR_BLACK);
         
-        // Draw Q4 borders (static)
-        display_fill_rect(half_w, half_h, half_w, 2, COLOR_WHITE);
-        display_fill_rect(half_w, DISPLAY_HEIGHT - 2, half_w, 2, COLOR_WHITE);
-        display_fill_rect(half_w, half_h, 2, half_h, COLOR_WHITE);
-        display_fill_rect(DISPLAY_WIDTH - 2, half_h, 2, half_h, COLOR_WHITE);
+        // Draw cross separator (light gray lines between quadrants)
+        uint16_t separator_color = 0x528A; // Light gray
+        // Vertical line (center)
+        display_fill_rect(half_w - 1, 0, 2, DISPLAY_HEIGHT, separator_color);
+        // Horizontal line (center)
+        display_fill_rect(0, half_h - 1, DISPLAY_WIDTH, 2, separator_color);
         
         ui_initialized = true;
     }
